@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.application.domain;
+import jakarta.persistence.*; import lombok.*; import java.time.*; import java.util.*;
+@Entity @Table(name="application_state_history") @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor public class ApplicationHistory { @Id private UUID id; @Column(name="application_id",nullable=false) private UUID applicationId; @Enumerated(EnumType.STRING) @Column(name="from_state") private WorkflowState fromState; @Enumerated(EnumType.STRING) @Column(name="to_state",nullable=false) private WorkflowState toState; private String reason; @Column(name="actor_id") private UUID actorId; @Column(name="created_at",nullable=false) private Instant createdAt; }

@@ -1,0 +1,1 @@
+package com.careerpilot.backend.modules.application.repositories; import com.careerpilot.backend.modules.application.domain.ApprovalPolicy; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*; public interface ApprovalPolicyRepository extends JpaRepository<ApprovalPolicy,UUID>{ Optional<ApprovalPolicy> findByCandidateId(UUID candidateId); }

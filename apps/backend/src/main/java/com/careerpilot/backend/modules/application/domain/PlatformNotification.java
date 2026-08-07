@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.application.domain;
+import jakarta.persistence.*; import lombok.*; import java.time.*; import java.util.*;
+@Entity @Table(name="application_notifications") @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor public class PlatformNotification { @Id private UUID id; @Column(name="candidate_id",nullable=false) private UUID candidateId; @Column(name="application_id",nullable=false) private UUID applicationId; @Column(nullable=false) private String type; @Column(nullable=false) private String title; @Column(nullable=false,length=2000) private String message; @Column(name="is_read",nullable=false) private boolean read; @Column(name="created_at",nullable=false) private Instant createdAt; }

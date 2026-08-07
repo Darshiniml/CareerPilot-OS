@@ -1,0 +1,1 @@
+package com.careerpilot.backend.modules.application.domain; public enum TrackingStatus { APPLICATION_SUBMITTED, APPLICATION_VIEWED, UNDER_REVIEW, ASSESSMENT, INTERVIEW_SCHEDULED, OFFER, REJECTED, WITHDRAWN, COMPLETED }

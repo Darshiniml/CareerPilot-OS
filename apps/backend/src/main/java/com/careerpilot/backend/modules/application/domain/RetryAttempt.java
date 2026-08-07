@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.application.domain;
+import jakarta.persistence.*; import lombok.*; import java.time.*; import java.util.*;
+@Entity @Table(name="application_retry_history",uniqueConstraints=@UniqueConstraint(columnNames={"application_id","attempt_number"})) @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor public class RetryAttempt { @Id private UUID id; @Column(name="application_id",nullable=false) private UUID applicationId; @Column(name="attempt_number",nullable=false) private int attemptNumber; private String reason; @Column(name="permanent_failure",nullable=false) private boolean permanentFailure; @Column(name="next_attempt_at") private Instant nextAttemptAt; @Column(name="created_at",nullable=false) private Instant createdAt; }

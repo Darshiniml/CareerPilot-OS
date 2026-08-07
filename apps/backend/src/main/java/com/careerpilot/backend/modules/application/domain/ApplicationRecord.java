@@ -1,0 +1,9 @@
+package com.careerpilot.backend.modules.application.domain;
+import jakarta.persistence.*; import lombok.*; import org.hibernate.annotations.JdbcTypeCode; import org.hibernate.type.SqlTypes; import java.time.*; import java.util.*;
+@Entity @Table(name="application_records",uniqueConstraints=@UniqueConstraint(name="uk_application_candidate_job",columnNames={"candidate_id","job_id"}))
+@Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor public class ApplicationRecord {
+ @Id @Column(name="application_id") private UUID applicationId; @Column(name="candidate_id",nullable=false) private UUID candidateId; @Column(name="company_id") private UUID companyId; @Column(name="job_id",nullable=false) private UUID jobId; @Column(name="connector_id") private String connectorId;
+ @Enumerated(EnumType.STRING) @Column(name="workflow_state",nullable=false) private WorkflowState workflowState; @Column(name="selected_resume_id") private UUID selectedResumeId; @Column(name="selected_resume_version") private Integer selectedResumeVersion; @Column(name="submission_method") private String submissionMethod;
+ @Column(name="match_score") private Double matchScore; @Column(name="created_at",nullable=false,updatable=false) private Instant createdAt; @Column(name="updated_at",nullable=false) private Instant updatedAt; @Column(name="submitted_at") private Instant submittedAt; @Column(name="last_verified_at") private Instant lastVerifiedAt; @Column(name="retry_count",nullable=false) private int retryCount; @Column(name="failure_reason",length=2000) private String failureReason; @Column(name="external_application_id") private String externalApplicationId;
+ @JdbcTypeCode(SqlTypes.JSON) @Column(columnDefinition="jsonb") @Builder.Default private Map<String,Object> metadata=new HashMap<>(); @Version private long version;
+}

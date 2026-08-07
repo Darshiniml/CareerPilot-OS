@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.application.domain;
+import jakarta.persistence.*; import lombok.*; import java.time.*; import java.util.*;
+@Entity @Table(name="application_audit") @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor public class ApplicationAudit { @Id private UUID id; @Column(name="application_id",nullable=false) private UUID applicationId; @Column(name="user_id") private UUID userId; @Column(nullable=false) private String action; @Column(name="from_state") private String fromState; @Column(name="to_state") private String toState; private String reason; @Column(name="ip_address") private String ipAddress; @Column(name="correlation_id") private String correlationId; @Column(name="created_at",nullable=false) private Instant createdAt; }
