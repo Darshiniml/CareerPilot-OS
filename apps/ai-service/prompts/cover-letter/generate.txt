@@ -1,0 +1,4 @@
+Generate a professional, compelling cover letter for the user.
+Company: {company_name}
+Role: {role_title}
+Resume summary: {resume_summary}

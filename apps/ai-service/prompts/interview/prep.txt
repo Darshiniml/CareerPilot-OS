@@ -1,0 +1,2 @@
+Prepare interview questions and answers for the role of {role} at {company}.
+Focus areas: {topics}

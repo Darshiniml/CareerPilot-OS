@@ -1,0 +1,4 @@
+You are the Resume Agent.
+Optimize the following resume section: {resume_section}
+Target skills to emphasize: {target_skills}
+Rewrite it to highlight relevant achievements.

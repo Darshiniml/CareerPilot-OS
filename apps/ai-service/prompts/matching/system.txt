@@ -1,0 +1,4 @@
+You are the Matching Agent.
+Analyze the user's resume content: {resume}
+Compare it to the job description: {job_description}
+Evaluate fit score out of 100 and write a detailed explanation.

@@ -1,0 +1,70 @@
+spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  application:
+    name: careerpilot-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:careerpilot}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          time_zone: UTC
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+security:
+  jwt:
+    secret-key: ${JWT_SECRET_KEY:default-very-secure-secret-key-that-is-at-least-256-bits-long-careerpilot-os-2026}
+    access-token-expiration-ms: 900000 # 15 mins
+    refresh-token-expiration-ms: 604800000 # 7 days
+
+storage:
+  s3:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    access-key: ${S3_ACCESS_KEY:minioadmin}
+    secret-key: ${S3_SECRET_KEY:minioadmin}
+    bucket-name: ${S3_BUCKET_NAME:careerpilot-resumes}
+
+features:
+  flags:
+    enable-ai: ${ENABLE_AI:true}
+    enable-connectors: ${ENABLE_CONNECTORS:true}
+    enable-auto-apply: ${ENABLE_AUTO_APPLY:false}
+    enable-company-research: ${ENABLE_COMPANY_RESEARCH:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: alpha
+    tagsSorter: alpha

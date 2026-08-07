@@ -1,0 +1,2 @@
+Conduct web and dossier research on company: {company_name}.
+Extract tech stack, culture, product areas.
