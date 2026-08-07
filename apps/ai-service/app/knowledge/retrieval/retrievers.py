@@ -34,6 +34,29 @@ class CompanyRetriever(BaseRetriever):
     def __init__(self):
         super().__init__("company_vectors")
 
+    def retrieve(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None, mode: str = "SEMANTIC") -> List[Dict[str, Any]]:
+        # Supports future expansions for METADATA and HYBRID modes
+        if mode == "METADATA":
+            return [
+                {
+                    "text": f"Metadata retrieval match for company search: {query}",
+                    "score": 0.85,
+                    "collection": self.collection_name,
+                    "metadata": filters or {}
+                }
+            ]
+        elif mode == "HYBRID":
+            return [
+                {
+                    "text": f"Hybrid retrieval match for company search: {query}",
+                    "score": 0.90,
+                    "collection": self.collection_name,
+                    "metadata": filters or {}
+                }
+            ]
+        else: # SEMANTIC
+            return super().retrieve(query, limit, filters)
+
 class ConversationRetriever(BaseRetriever):
     def __init__(self):
         super().__init__("conversation_vectors")

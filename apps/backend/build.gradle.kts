@@ -6,9 +6,9 @@ plugins {
 
 dependencies {
     // Include shared monorepo modules
-    implementation(project(":packages:shared-dto:java"))
-    implementation(project(":packages:shared-events:java"))
-    implementation(project(":packages:connector-sdk:java"))
+    implementation(project(":packages:shared-dto"))
+    implementation(project(":packages:shared-events"))
+    implementation(project(":packages:connector-sdk"))
 
     // Spring Boot Core Starters
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -21,7 +21,6 @@ dependencies {
     // Database
     runtimeOnly("org.postgresql:postgresql")
     implementation("org.flywaydb:flyway-core")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql")
 
     // Security & Auth
     implementation("io.jsonwebtoken:jjwt-api:0.12.5")
@@ -45,6 +44,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.mockito:mockito-core")
+    testRuntimeOnly("com.h2database:h2")
 }
 
 tasks.withType<Test> {

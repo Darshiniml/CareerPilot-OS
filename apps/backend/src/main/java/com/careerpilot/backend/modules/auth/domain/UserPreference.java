@@ -36,6 +36,32 @@ public class UserPreference {
     @Builder.Default
     private boolean autoApply = false;
 
+    @Column(name = "work_style", nullable = false)
+    @Builder.Default
+    private String workStyle = "REMOTE";
+
+    @Column(name = "salary_min")
+    private Integer salaryMin;
+
+    @Column(name = "salary_max")
+    private Integer salaryMax;
+
+    @Column(name = "currency_code", length = 3, nullable = false)
+    @Builder.Default
+    private String currencyCode = "USD";
+
+    @Column(name = "salary_period", length = 20, nullable = false)
+    @Builder.Default
+    private String salaryPeriod = "YEARLY";
+
+    @Column(name = "employment_type", length = 50, nullable = false)
+    @Builder.Default
+    private String employmentType = "FULL_TIME";
+
+    @Column(name = "job_alert_settings", nullable = false)
+    @Builder.Default
+    private boolean jobAlertSettings = true;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

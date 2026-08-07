@@ -17,6 +17,16 @@ from app.core.prompt_manager import PromptManager
 # Knowledge Platform imports
 from app.knowledge.factory.processors import document_factory
 
+# Resume Intelligence imports
+from app.resume.parser import BaseResumeParser
+from app.resume.extractors import ResumeExtractor
+from app.resume.ats import ATSAnalysisService
+
+# Company Intelligence imports
+from app.company.parser import CompanyParser
+from app.company.extractors import CompanyExtractor, TechnologyExtractor
+from app.company.insights import CompanyInsightsService
+
 app = FastAPI(
     title="CareerPilot OS AI Platform",
     description="Python FastAPI AI service providing multi-agent orchestration, LangGraph workflow execution, and semantic vector routing.",
@@ -39,6 +49,10 @@ _metrics = {
     "documents_processed": 0,
     "chunk_count": 0
 }
+
+# In-memory document storage cache for process endpoints
+_resume_db: Dict[str, Dict[str, Any]] = {}
+_company_db: Dict[str, Dict[str, Any]] = {}
 
 def verify_jwt(credentials: HTTPAuthorizationCredentials = Security(security)):
     token = credentials.credentials
@@ -98,8 +112,10 @@ def execute_task(request: ExecuteTaskRequest):
     try:
         if task_type == "RESUME_PARSE":
             provider_name = settings.active_llm_provider
-            processor = document_factory.get_processor("RESUME")
-            result = processor.extractor.extract(payload.get("resumeText", "Sample resume content"))
+            parser = BaseResumeParser()
+            extractor = ResumeExtractor()
+            sections = parser.parse(payload.get("content", "Sample resume content"))
+            result = extractor.extract_all(sections)
         elif task_type == "GENERATE_EMBEDDINGS":
             provider_name = settings.active_embedding_provider
             embedder = get_embedding_provider()
@@ -110,11 +126,86 @@ def execute_task(request: ExecuteTaskRequest):
             }
         elif task_type == "JOB_MATCH":
             provider_name = settings.active_llm_provider
+            # Acts as the ATS Analyzer
+            ats_service = ATSAnalysisService()
+            result = ats_service.analyze(payload.get("knowledge", {}))
+        elif task_type == "COMPANY_PARSE":
+            provider_name = settings.active_llm_provider
+            parser = CompanyParser()
+            extractor = CompanyExtractor()
+            sections = parser.parse(payload.get("content", ""))
+            result = extractor.extract_all(sections)
+        elif task_type == "COMPANY_METADATA":
+            provider_name = "taxonomy-service"
+            knowledge = payload.get("knowledge", {})
+            tech_stack_dict = knowledge.get("technologyStack", {})
+            tech_list = tech_stack_dict.get("value", []) if isinstance(tech_stack_dict, dict) else []
+            
+            # Technology Categories mapping
+            tech_extractor = TechnologyExtractor()
+            tech_categories = tech_extractor.categorize_tech(tech_list)
+            
+            # Maturity calculations
+            tech_list_lower = [t.lower() for t in tech_list]
+            backend_count = sum(1 for t in tech_list_lower if t in ["java", "python", "go", "spring boot", "fastapi"])
+            frontend_count = sum(1 for t in tech_list_lower if t in ["react", "angular", "typescript", "javascript"])
+            total_focus = backend_count + frontend_count
+            backend_focus = backend_count / total_focus if total_focus > 0 else 0.5
+            frontend_focus = frontend_count / total_focus if total_focus > 0 else 0.5
+            
+            devops_maturity = "LOW"
+            if "docker" in tech_list_lower and "kubernetes" in tech_list_lower:
+                devops_maturity = "HIGH"
+            elif "docker" in tech_list_lower or "kubernetes" in tech_list_lower:
+                devops_maturity = "MEDIUM"
+                
+            cloud_maturity = "LOW"
+            if "amazon web services" in tech_list_lower or "gcp" in tech_list_lower or "aws" in tech_list_lower:
+                cloud_maturity = "MEDIUM"
+            if ("amazon web services" in tech_list_lower or "aws" in tech_list_lower) and "kubernetes" in tech_list_lower:
+                cloud_maturity = "HIGH"
+                
+            ai_adoption = "LOW"
+            if any(ai in tech_list_lower for ai in ["tensorflow", "pytorch", "openai"]):
+                ai_adoption = "HIGH"
+                
+            # Classify Industries
+            industries_dict = knowledge.get("industries", {})
+            industries = industries_dict.get("value", ["SaaS"]) if isinstance(industries_dict, dict) else ["SaaS"]
+            
+            # Primary/Secondary stacks
+            primary_stack = [t for t in tech_list if t in ["Java", "Go", "Python", "React", "Kubernetes", "Docker"]]
+            secondary_stack = [t for t in tech_list if t not in primary_stack]
+            
             result = {
-                "match_score": 85.5,
-                "keywords_found": ["Spring Boot", "FastAPI"],
-                "matched": True
+                "industries": industries,
+                "employeeRange": knowledge.get("employeeRange", {}).get("value", "1000-5000"),
+                "remotePolicy": "Hybrid",
+                "technologyCategories": tech_categories,
+                "primaryLanguage": "Java" if "Java" in tech_list else ("Python" if "Python" in tech_list else "Go"),
+                "primaryTechnologyStack": primary_stack[:4],
+                "secondaryTechnologies": secondary_stack[:6],
+                "backendFocus": backend_focus,
+                "frontendFocus": frontend_focus,
+                "cloudMaturity": cloud_maturity,
+                "aiAdoption": ai_adoption,
+                "devOpsMaturity": devops_maturity
             }
+        elif task_type == "COMPANY_INSIGHTS":
+            provider_name = "insights-classifier"
+            knowledge = payload.get("knowledge", {})
+            metadata = payload.get("metadata", {})
+            insights_service = CompanyInsightsService()
+            result = insights_service.generate_insights(knowledge, metadata)
+        elif task_type == "COMPANY_SEARCH":
+            provider_name = "qdrant"
+            processor = document_factory.get_processor("COMPANY")
+            retrieved = processor.retriever.retrieve(
+                query=payload.get("query", ""),
+                limit=payload.get("size", 5),
+                filters=payload
+            )
+            result = {"results": retrieved}
         else:
             result = {
                 "message": f"Generic execution completed for type: {task_type}"
@@ -228,6 +319,135 @@ def search_retrieval(request: RetrievalSearchRequest):
         "results": results,
         "executionTimeMs": execution_time
     }
+
+# Resume Intelligence Endpoints
+class ProcessResumeRequest(BaseModel):
+    documentId: str
+    content: str
+
+@app.post("/api/v1/ai/resume/process")
+def process_resume_api(request: ProcessResumeRequest):
+    parser = BaseResumeParser()
+    extractor = ResumeExtractor()
+    ats_service = ATSAnalysisService()
+
+    sections = parser.parse(request.content)
+    knowledge = extractor.extract_all(sections)
+    ats_metrics = ats_service.analyze(knowledge)
+
+    # Cache locally in-memory
+    _resume_db[request.documentId] = {
+        "knowledge": knowledge,
+        "ats": ats_metrics,
+        "metadata": {
+            "documentId": request.documentId,
+            "status": "READY"
+        }
+    }
+    return _resume_db[request.documentId]
+
+@app.get("/api/v1/ai/resume/{id}")
+def get_resume_knowledge_api(id: str):
+    if id not in _resume_db:
+        raise HTTPException(status_code=404, detail="Resume not processed or not found")
+    return _resume_db[id]["knowledge"]
+
+@app.get("/api/v1/ai/resume/{id}/metadata")
+def get_resume_metadata_api(id: str):
+    if id not in _resume_db:
+        raise HTTPException(status_code=404, detail="Resume not processed or not found")
+    return _resume_db[id]["metadata"]
+
+@app.get("/api/v1/ai/resume/{id}/ats")
+def get_resume_ats_api(id: str):
+    if id not in _resume_db:
+        raise HTTPException(status_code=404, detail="Resume not processed or not found")
+    return _resume_db[id]["ats"]
+
+@app.post("/api/v1/ai/resume/search")
+def search_resumes_api(request: RetrievalSearchRequest):
+    processor = document_factory.get_processor("RESUME")
+    results = processor.retriever.retrieve(
+        query=request.query, 
+        limit=request.limit, 
+        filters=request.filters
+    )
+    return {"results": results}
+
+# Company Intelligence Endpoints
+class ProcessCompanyRequest(BaseModel):
+    documentId: str
+    content: str
+    url: Optional[str] = None
+
+@app.post("/api/v1/ai/company/process")
+def process_company_api(request: ProcessCompanyRequest):
+    parser = CompanyParser()
+    extractor = CompanyExtractor()
+    insights_service = CompanyInsightsService()
+    
+    sections = parser.parse(request.content)
+    knowledge = extractor.extract_all(sections)
+    
+    # Calculate metadata metrics
+    tech_stack_dict = knowledge.get("technologyStack", {})
+    tech_list = tech_stack_dict.get("value", []) if isinstance(tech_stack_dict, dict) else []
+    tech_extractor = TechnologyExtractor()
+    tech_categories = tech_extractor.categorize_tech(tech_list)
+    
+    metadata = {
+        "industries": knowledge.get("industries", {}).get("value", ["SaaS"]),
+        "employeeRange": knowledge.get("employeeRange", {}).get("value", "1000-5000"),
+        "remotePolicy": "Hybrid",
+        "technologyCategories": tech_categories,
+        "primaryLanguage": "Java" if "Java" in tech_list else "Python",
+        "primaryTechnologyStack": tech_list[:4],
+        "secondaryTechnologies": tech_list[4:10],
+        "backendFocus": 0.7,
+        "frontendFocus": 0.3,
+        "cloudMaturity": "HIGH",
+        "aiAdoption": "MEDIUM",
+        "devOpsMaturity": "HIGH"
+    }
+    
+    insights = insights_service.generate_insights(knowledge, metadata)
+    
+    # Cache locally in-memory
+    _company_db[request.documentId] = {
+        "knowledge": knowledge,
+        "metadata": metadata,
+        "insights": insights
+    }
+    
+    return _company_db[request.documentId]
+
+@app.get("/api/v1/ai/company/{id}")
+def get_company_knowledge_api(id: str):
+    if id not in _company_db:
+        raise HTTPException(status_code=404, detail="Company not processed or not found")
+    return _company_db[id]["knowledge"]
+
+@app.get("/api/v1/ai/company/{id}/metadata")
+def get_company_metadata_api(id: str):
+    if id not in _company_db:
+        raise HTTPException(status_code=404, detail="Company not processed or not found")
+    return _company_db[id]["metadata"]
+
+@app.get("/api/v1/ai/company/{id}/insights")
+def get_company_insights_api(id: str):
+    if id not in _company_db:
+        raise HTTPException(status_code=404, detail="Company not processed or not found")
+    return _company_db[id]["insights"]
+
+@app.post("/api/v1/ai/company/search")
+def search_companies_api(request: RetrievalSearchRequest):
+    processor = document_factory.get_processor("COMPANY")
+    results = processor.retriever.retrieve(
+        query=request.query, 
+        limit=request.limit, 
+        filters=request.filters
+    )
+    return {"results": results}
 
 @app.get("/api/v1/ai/health")
 def health_check():

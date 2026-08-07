@@ -36,9 +36,59 @@ class JobChunkStrategy(DefaultChunkStrategy):
     # Specialized split strategy for job posting descriptions
     pass
 
-class CompanyChunkStrategy(DefaultChunkStrategy):
-    # Specialized split strategy for company profiles
-    pass
+from app.company.parser import CompanyParser
+
+class CompanyChunkStrategy(ChunkStrategy):
+    def split(self, content: str, size: int = 500, overlap: int = 100) -> List[Dict[str, Any]]:
+        parser = CompanyParser()
+        sections = parser.parse(content)
+        chunks = []
+        chunk_number = 1
+        
+        for section_name, section_text in sections.items():
+            if not section_text.strip():
+                continue
+                
+            heading_title = section_name.replace("_", " ").title()
+            
+            # Formulate metadata tags
+            tech_tags = []
+            for tech in ["Java", "Python", "Go", "Kubernetes", "Docker", "AWS"]:
+                if tech.lower() in section_text.lower():
+                    tech_tags.append(tech)
+                    
+            chunks.append({
+                "chunkNumber": chunk_number,
+                "text": f"[{heading_title}]\n{section_text}",
+                "tokenCount": len(section_text.split()),
+                "metadata": {
+                    "sourcePage": "Website Source",
+                    "section": section_name,
+                    "heading": heading_title,
+                    "category": "Company Profile",
+                    "technologyTags": tech_tags,
+                    "documentVersion": 1
+                }
+            })
+            chunk_number += 1
+            
+        # Fallback if no chunks generated
+        if not chunks:
+            chunks.append({
+                "chunkNumber": 1,
+                "text": content,
+                "tokenCount": len(content.split()),
+                "metadata": {
+                    "sourcePage": "Website Source",
+                    "section": "about",
+                    "heading": "General Overview",
+                    "category": "Company Profile",
+                    "technologyTags": [],
+                    "documentVersion": 1
+                }
+            })
+            
+        return chunks
 
 class ConversationChunkStrategy(DefaultChunkStrategy):
     # Specialized split strategy for recruiter conversation logs

@@ -99,9 +99,11 @@ public class KnowledgePipelineService {
         payload.put("userId", doc.getOwnerId() != null ? doc.getOwnerId().toString() : "");
         payload.put("documentType", doc.getDocumentType());
 
+        String taskType = "COMPANY".equalsIgnoreCase(doc.getDocumentType()) ? "COMPANY_PARSE" : "RESUME_PARSE";
+
         AiTaskRequestDto requestDto = AiTaskRequestDto.builder()
                 .taskId(UUID.randomUUID())
-                .taskType("RESUME_PARSE")
+                .taskType(taskType)
                 .payload(payload)
                 .build();
 

@@ -6,7 +6,6 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -17,6 +16,4 @@ import java.util.UUID;
 public class ResumeParsedEvent extends BaseEvent {
     private UUID resumeId;
     private UUID userId;
-    private String parsedText;
-    private List<String> skills;
 }

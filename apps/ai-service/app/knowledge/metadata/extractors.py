@@ -32,9 +32,12 @@ class JobMetadataExtractor(MetadataExtractor):
             "location": "Remote"
         }
 
+from app.company.parser import CompanyParser
+from app.company.extractors import CompanyExtractor
+
 class CompanyMetadataExtractor(MetadataExtractor):
     def extract(self, content: str) -> Dict[str, Any]:
-        return {
-            "industry": "Software Engineering",
-            "technologies": ["AWS", "Qdrant", "Redis"]
-        }
+        parser = CompanyParser()
+        extractor = CompanyExtractor()
+        sections = parser.parse(content)
+        return extractor.extract_all(sections)

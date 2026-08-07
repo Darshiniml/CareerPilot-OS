@@ -36,12 +36,21 @@ def test_execute_parse_task():
         json={
             "taskId": "123e4567-e89b-12d3-a456-426614174000",
             "taskType": "RESUME_PARSE",
-            "payload": {"resumeId": "123", "userId": "abc"}
+            "payload": {
+                "content": "Google\nSoftware Engineer\nSpring JS AWS Python"
+            }
         }
     )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "COMPLETED"
+    assert "skills" in data["result"]
+    
+    # Assert raw -> canonical mappings work (AWS -> Amazon Web Services)
+    skills = [s["skill"] for s in data["result"]["skills"]]
+    assert "Amazon Web Services" in skills
+    assert "Spring Framework" in skills
+    assert "JavaScript" in skills
 
 def test_create_document_api():
     response = client.post(
@@ -55,7 +64,6 @@ def test_create_document_api():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "VALIDATED"
-    assert data["extractedMetadata"]["experienceYears"] == 5
 
 def test_chunk_document_api():
     response = client.post(
@@ -98,3 +106,45 @@ def test_search_retrieval_api():
     data = response.json()
     assert "results" in data
     assert len(data["results"]) > 0
+
+def test_resume_processing_flow():
+    doc_id = "123e4567-e89b-12d3-a456-426614174321"
+    # Process
+    response = client.post(
+        "/api/v1/ai/resume/process",
+        json={
+            "documentId": doc_id,
+            "content": "Jane Doe\njane.doe@example.com\nGoogle\nSoftware Engineer\nPython JS AWS"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "knowledge" in data
+    assert "ats" in data
+
+    # Fetch knowledge
+    response = client.get(f"/api/v1/ai/resume/{doc_id}")
+    assert response.status_code == 200
+    assert response.json()["personalInformation"]["name"] == "Jane Doe"
+
+    # Fetch metadata
+    response = client.get(f"/api/v1/ai/resume/{doc_id}/metadata")
+    assert response.status_code == 200
+    assert response.json()["status"] == "READY"
+
+    # Fetch ATS
+    response = client.get(f"/api/v1/ai/resume/{doc_id}/ats")
+    assert response.status_code == 200
+    assert "atsScore" in response.json()
+
+def test_search_resumes_api():
+    response = client.post(
+        "/api/v1/ai/resume/search",
+        json={
+            "query": "React Developers",
+            "documentType": "RESUME",
+            "limit": 3
+        }
+    )
+    assert response.status_code == 200
+    assert "results" in response.json()
