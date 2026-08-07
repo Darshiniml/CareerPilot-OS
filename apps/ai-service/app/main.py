@@ -3,6 +3,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 import os
 from pydantic import BaseModel
+import redis
+from qdrant_client import QdrantClient
 
 from app.core.llm_provider import get_llm_provider
 from app.core.prompt_manager import PromptManager
@@ -37,9 +39,37 @@ class MatchRequest(BaseModel):
 
 @app.get("/api/v1/ai/health")
 def health_check():
+    qdrant_status = "disconnected"
+    redis_status = "disconnected"
+    
+    # Check Qdrant Connection
+    try:
+        qdrant_host = os.getenv("QDRANT_HOST", "localhost")
+        qdrant_port = int(os.getenv("QDRANT_PORT", 6333))
+        client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=1.0)
+        client.get_collections()
+        qdrant_status = "connected"
+    except Exception as e:
+        qdrant_status = f"error: {str(e)}"
+        
+    # Check Redis Connection
+    try:
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = int(os.getenv("REDIS_PORT", 6379))
+        r = redis.Redis(host=redis_host, port=redis_port, socket_timeout=1.0)
+        r.ping()
+        redis_status = "connected"
+    except Exception as e:
+        redis_status = f"error: {str(e)}"
+
+    # If mock provider is set and local dependencies are missing, we still report degraded status rather than crash
     return {
-        "status": "healthy",
-        "provider": os.getenv("LLM_PROVIDER", "mock")
+        "status": "healthy" if qdrant_status == "connected" and redis_status == "connected" else "degraded",
+        "llm_provider": os.getenv("LLM_PROVIDER", "mock"),
+        "connections": {
+            "qdrant": qdrant_status,
+            "redis": redis_status
+        }
     }
 
 @app.post("/api/v1/ai/planner")
@@ -47,10 +77,8 @@ def plan_action(request: PlannerRequest, user_data: dict = Depends(verify_jwt)):
     prompt_manager = PromptManager()
     llm = get_llm_provider()
     
-    # Load system prompt
     system_prompt = prompt_manager.get_prompt("planner", "system.txt")
     
-    # Generate action plan
     response = llm.generate(
         prompt="Orchestrate steps for intent: {intent}",
         system_prompt=system_prompt,

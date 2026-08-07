@@ -14,7 +14,10 @@ app.dependency_overrides[verify_jwt] = override_verify_jwt
 def test_health_check():
     response = client.get("/api/v1/ai/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "provider": "mock"}
+    data = response.json()
+    assert "status" in data
+    assert "llm_provider" in data
+    assert "connections" in data
 
 def test_planner_endpoint():
     response = client.post(
