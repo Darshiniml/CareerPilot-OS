@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.discovery;
+import com.careerpilot.backend.modules.discovery.services.ConnectorRegistry; import com.careerpilot.connector.sdk.*; import org.junit.jupiter.api.*; import java.util.*; import static org.assertj.core.api.Assertions.*; import static org.mockito.Mockito.*;
+class ConnectorRegistryTest {@Test void registersAndTogglesConnector(){Connector c=mock(Connector.class);when(c.getConnectorId()).thenReturn("rss");when(c.getVersion()).thenReturn("1.0");when(c.getConnectorType()).thenReturn("RSS");when(c.getDisplayName()).thenReturn("RSS");when(c.isEnabled()).thenReturn(true);var r=new ConnectorRegistry(List.of());r.register(c);assertThat(r.list()).hasSize(1);assertThat(r.get("rss")).isSameAs(c);}}

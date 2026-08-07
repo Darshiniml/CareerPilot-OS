@@ -1,0 +1,1 @@
+package com.careerpilot.backend.modules.discovery.services; import com.careerpilot.connector.sdk.*; import java.util.*; public interface DiscoveryScheduler { SynchronizationResult trigger(String connectorId); List<SynchronizationResult> triggerAll(); }

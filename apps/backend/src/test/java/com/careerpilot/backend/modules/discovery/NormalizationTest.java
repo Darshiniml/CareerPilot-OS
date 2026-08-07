@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.discovery;
+import com.careerpilot.backend.modules.discovery.services.TaxonomyNormalizer; import com.careerpilot.connector.sdk.DiscoveredJob; import org.junit.jupiter.api.*; import static org.assertj.core.api.Assertions.*;
+class NormalizationTest {@Test void normalizesCanonicalFields(){var j=DiscoveredJob.builder().title(" Sr SWE ").company("Acme, Inc.").employmentType("full-time").workMode("on site").rawContent("Java Spring and AWS").build();new TaxonomyNormalizer().normalize(j);assertThat(j.getNormalizedTitle()).isEqualTo("senior software engineer");assertThat(j.getNormalizedCompany()).isEqualTo("acme,");assertThat(j.getEmploymentType()).isEqualTo("FULL_TIME");assertThat(j.getSkills()).contains("java","spring","aws");}}

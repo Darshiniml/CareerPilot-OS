@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.discovery;
+import com.careerpilot.backend.modules.discovery.services.DuplicateDetector; import com.careerpilot.backend.modules.discovery.repositories.DiscoveryJobRepository; import com.careerpilot.connector.sdk.DiscoveredJob; import org.junit.jupiter.api.*; import static org.assertj.core.api.Assertions.*; import static org.mockito.Mockito.*;
+class DuplicateDetectionTest {@Test void hashIsStable(){var d=new DuplicateDetector(mock(DiscoveryJobRepository.class));var j=DiscoveredJob.builder().source("feed").normalizedCompany("acme").normalizedTitle("engineer").location("remote").rawContent("Java").build();assertThat(d.hash(j)).isEqualTo(d.hash(j)).hasSize(64);}}

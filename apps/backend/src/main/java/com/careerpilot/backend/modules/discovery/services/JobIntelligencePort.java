@@ -1,0 +1,1 @@
+package com.careerpilot.backend.modules.discovery.services; import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob; public interface JobIntelligencePort { void accept(DiscoveryJob job); }

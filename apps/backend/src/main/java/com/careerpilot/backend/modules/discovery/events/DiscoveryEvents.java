@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.discovery.events;
+import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob; import com.careerpilot.connector.sdk.*; import java.time.*;
+public final class DiscoveryEvents { private DiscoveryEvents(){} public record JobDiscoveredEvent(DiscoveryJob job){} public record JobUpdatedEvent(DiscoveryJob job){} public record JobRemovedEvent(DiscoveryJob job){} public record ConnectorHealthChangedEvent(String connectorId,ConnectorHealth health){} public record ConnectorSynchronizationCompletedEvent(String connectorId,SynchronizationResult result,Instant at){} public record JobReadyForIntelligenceEvent(DiscoveryJob job){} }

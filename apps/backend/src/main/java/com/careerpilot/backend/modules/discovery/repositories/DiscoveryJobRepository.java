@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.discovery.repositories;
+import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob; import org.springframework.data.jpa.repository.JpaRepository; import java.util.*;
+public interface DiscoveryJobRepository extends JpaRepository<DiscoveryJob,UUID>{ Optional<DiscoveryJob> findByConnectorIdAndExternalId(String connectorId,String externalId); List<DiscoveryJob> findByConnectorId(String connectorId); Optional<DiscoveryJob> findFirstBySourceAndNormalizedCompanyAndNormalizedTitleAndLocationAndContentHash(String s,String c,String t,String l,String h); }

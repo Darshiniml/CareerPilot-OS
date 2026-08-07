@@ -1,0 +1,3 @@
+package com.careerpilot.backend.modules.discovery.services;
+import com.careerpilot.connector.sdk.*; import org.springframework.scheduling.annotation.Scheduled; import org.springframework.stereotype.Service; import java.util.*;
+@Service public class DefaultDiscoveryScheduler implements DiscoveryScheduler { private final JobDiscoveryService service; public DefaultDiscoveryScheduler(JobDiscoveryService s){service=s;} public SynchronizationResult trigger(String id){return service.discover(id,DiscoveryContext.builder().build());}public List<SynchronizationResult> triggerAll(){return service.discoverAll();}@Scheduled(fixedDelayString="${discovery.poll-interval-ms:900000}") public void periodicPolling(){triggerAll();}}
