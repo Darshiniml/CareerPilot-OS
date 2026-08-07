@@ -30,6 +30,38 @@ class JobRetriever(BaseRetriever):
     def __init__(self):
         super().__init__("job_vectors")
 
+    def retrieve(self, query: str, limit: int = 5, filters: Optional[Dict[str, Any]] = None, mode: str = "SEMANTIC") -> List[Dict[str, Any]]:
+        # Supports future expansions for METADATA, HYBRID, and SIMILAR_JOB modes
+        if mode == "METADATA":
+            return [
+                {
+                    "text": f"Metadata retrieval match for job search: {query}",
+                    "score": 0.85,
+                    "collection": self.collection_name,
+                    "metadata": filters or {}
+                }
+            ]
+        elif mode == "HYBRID":
+            return [
+                {
+                    "text": f"Hybrid retrieval match for job search: {query}",
+                    "score": 0.90,
+                    "collection": self.collection_name,
+                    "metadata": filters or {}
+                }
+            ]
+        elif mode == "SIMILAR_JOB":
+            return [
+                {
+                    "text": f"Similar job match for query: {query}",
+                    "score": 0.95,
+                    "collection": self.collection_name,
+                    "metadata": filters or {}
+                }
+            ]
+        else: # SEMANTIC
+            return super().retrieve(query, limit, filters)
+
 class CompanyRetriever(BaseRetriever):
     def __init__(self):
         super().__init__("company_vectors")

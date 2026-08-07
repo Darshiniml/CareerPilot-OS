@@ -13,8 +13,7 @@ import java.util.UUID;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class JobDiscoveredEvent extends BaseEvent {
+public class JobParsedEvent extends BaseEvent {
     private UUID jobId;
     private UUID userId;
-    private String url;
 }

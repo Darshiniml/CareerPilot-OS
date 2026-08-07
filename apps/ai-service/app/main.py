@@ -27,6 +27,11 @@ from app.company.parser import CompanyParser
 from app.company.extractors import CompanyExtractor, TechnologyExtractor
 from app.company.insights import CompanyInsightsService
 
+# Job Intelligence imports
+from app.job.parser import JobParser
+from app.job.extractors import JobExtractor, JobQualityMetricsGenerator
+from app.job.insights import JobInsightsService
+
 app = FastAPI(
     title="CareerPilot OS AI Platform",
     description="Python FastAPI AI service providing multi-agent orchestration, LangGraph workflow execution, and semantic vector routing.",
@@ -53,6 +58,7 @@ _metrics = {
 # In-memory document storage cache for process endpoints
 _resume_db: Dict[str, Dict[str, Any]] = {}
 _company_db: Dict[str, Dict[str, Any]] = {}
+_job_db: Dict[str, Dict[str, Any]] = {}
 
 def verify_jwt(credentials: HTTPAuthorizationCredentials = Security(security)):
     token = credentials.credentials
@@ -197,9 +203,62 @@ def execute_task(request: ExecuteTaskRequest):
             metadata = payload.get("metadata", {})
             insights_service = CompanyInsightsService()
             result = insights_service.generate_insights(knowledge, metadata)
-        elif task_type == "COMPANY_SEARCH":
+        elif task_type == "JOB_PARSE":
+            provider_name = settings.active_llm_provider
+            parser = JobParser()
+            extractor = JobExtractor()
+            sections = parser.parse(payload.get("content", ""))
+            result = extractor.extract_all(sections)
+        elif task_type == "JOB_METADATA":
+            provider_name = "taxonomy-service"
+            knowledge = payload.get("knowledge", {})
+            
+            # Map technology categories and values
+            all_skills = knowledge.get("requiredSkills", []) + knowledge.get("preferredSkills", [])
+            tech_list_lower = [s["name"].lower() for s in all_skills]
+            
+            primary_lang = "Java"
+            for lang in ["java", "python", "go", "typescript"]:
+                if lang in tech_list_lower:
+                    primary_lang = lang.title()
+                    break
+                    
+            cloud = "AWS"
+            for c in ["aws", "amazon web services", "gcp", "azure"]:
+                if c in tech_list_lower:
+                    cloud = "AWS" if c in ["aws", "amazon web services"] else c.upper()
+                    break
+                    
+            work_mode = knowledge.get("workMode", {}).get("value", "Hybrid").lower()
+            inferred = knowledge.get("inferredSeniority", {}).get("value", "Mid-Level")
+            
+            metadata = {
+                "primaryLanguage": primary_lang,
+                "cloud": cloud,
+                "industry": "Software Engineering",
+                "experience": knowledge.get("experienceRequired", {}).get("value", "5+ years"),
+                "remote": "remote" in work_mode,
+                "internship": inferred == "Internship"
+            }
+            
+            # Job quality metrics
+            metrics_gen = JobQualityMetricsGenerator()
+            content = payload.get("content", "") or "Sample job description content containing required parameters."
+            quality_metrics = metrics_gen.generate_metrics(knowledge, content)
+            
+            result = {
+                "metadata": metadata,
+                "qualityMetrics": quality_metrics
+            }
+        elif task_type == "JOB_INSIGHTS":
+            provider_name = "insights-classifier"
+            knowledge = payload.get("knowledge", {})
+            metadata = payload.get("metadata", {})
+            insights_service = JobInsightsService()
+            result = insights_service.generate_insights(knowledge, metadata)
+        elif task_type == "JOB_SEARCH":
             provider_name = "qdrant"
-            processor = document_factory.get_processor("COMPANY")
+            processor = document_factory.get_processor("JOB")
             retrieved = processor.retriever.retrieve(
                 query=payload.get("query", ""),
                 limit=payload.get("size", 5),
@@ -442,6 +501,94 @@ def get_company_insights_api(id: str):
 @app.post("/api/v1/ai/company/search")
 def search_companies_api(request: RetrievalSearchRequest):
     processor = document_factory.get_processor("COMPANY")
+    results = processor.retriever.retrieve(
+        query=request.query, 
+        limit=request.limit, 
+        filters=request.filters
+    )
+    return {"results": results}
+
+# Job Intelligence Endpoints
+class ProcessJobRequest(BaseModel):
+    documentId: str
+    content: str
+    url: Optional[str] = None
+
+@app.post("/api/v1/ai/job/process")
+def process_job_api(request: ProcessJobRequest):
+    parser = JobParser()
+    extractor = JobExtractor()
+    metrics_gen = JobQualityMetricsGenerator()
+    insights_service = JobInsightsService()
+    
+    sections = parser.parse(request.content)
+    knowledge = extractor.extract_all(sections)
+    
+    # Calculate metadata metrics
+    all_skills = knowledge.get("requiredSkills", []) + knowledge.get("preferredSkills", [])
+    tech_list_lower = [s["name"].lower() for s in all_skills]
+    
+    primary_lang = "Java"
+    for lang in ["java", "python", "go", "typescript"]:
+        if lang in tech_list_lower:
+            primary_lang = lang.title()
+            break
+            
+    cloud = "AWS"
+    for c in ["aws", "amazon web services", "gcp", "azure"]:
+        if c in tech_list_lower:
+            cloud = "AWS" if c in ["aws", "amazon web services"] else c.upper()
+            break
+            
+    work_mode = knowledge.get("workMode", {}).get("value", "Hybrid").lower()
+    inferred = knowledge.get("inferredSeniority", {}).get("value", "Mid-Level")
+    
+    metadata = {
+        "primaryLanguage": primary_lang,
+        "cloud": cloud,
+        "industry": "Software Engineering",
+        "experience": knowledge.get("experienceRequired", {}).get("value", "5+ years"),
+        "remote": "remote" in work_mode,
+        "internship": inferred == "Internship"
+    }
+    
+    quality_metrics = metrics_gen.generate_metrics(knowledge, request.content)
+    insights = insights_service.generate_insights(knowledge, metadata)
+    
+    # Cache locally in-memory
+    _job_db[request.documentId] = {
+        "knowledge": knowledge,
+        "metadata": metadata,
+        "qualityMetrics": quality_metrics,
+        "insights": insights
+    }
+    
+    return _job_db[request.documentId]
+
+@app.get("/api/v1/ai/job/{id}")
+def get_job_knowledge_api(id: str):
+    if id not in _job_db:
+        raise HTTPException(status_code=404, detail="Job not processed or not found")
+    return _job_db[id]["knowledge"]
+
+@app.get("/api/v1/ai/job/{id}/metadata")
+def get_job_metadata_api(id: str):
+    if id not in _job_db:
+        raise HTTPException(status_code=404, detail="Job not processed or not found")
+    return {
+        "metadata": _job_db[id]["metadata"],
+        "qualityMetrics": _job_db[id]["qualityMetrics"]
+    }
+
+@app.get("/api/v1/ai/job/{id}/insights")
+def get_job_insights_api(id: str):
+    if id not in _job_db:
+        raise HTTPException(status_code=404, detail="Job not processed or not found")
+    return _job_db[id]["insights"]
+
+@app.post("/api/v1/ai/job/search")
+def search_jobs_api(request: RetrievalSearchRequest):
+    processor = document_factory.get_processor("JOB")
     results = processor.retriever.retrieve(
         query=request.query, 
         limit=request.limit, 

@@ -24,13 +24,15 @@ class ResumeMetadataExtractor(MetadataExtractor):
             "topKeywords": ["Docker", "Kubernetes"]
         }
 
+from app.job.parser import JobParser
+from app.job.extractors import JobExtractor
+
 class JobMetadataExtractor(MetadataExtractor):
     def extract(self, content: str) -> Dict[str, Any]:
-        return {
-            "requiredSkills": ["FastAPI", "React", "TypeScript"],
-            "salaryRange": "100k-130k",
-            "location": "Remote"
-        }
+        parser = JobParser()
+        extractor = JobExtractor()
+        sections = parser.parse(content)
+        return extractor.extract_all(sections)
 
 from app.company.parser import CompanyParser
 from app.company.extractors import CompanyExtractor
