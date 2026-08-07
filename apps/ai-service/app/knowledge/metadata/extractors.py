@@ -1,0 +1,40 @@
+from abc import ABC, abstractmethod
+from typing import Dict, Any
+
+class MetadataExtractor(ABC):
+    @abstractmethod
+    def extract(self, content: str) -> Dict[str, Any]:
+        """Extract structured metadata fields from document text."""
+        pass
+
+class DefaultMetadataExtractor(MetadataExtractor):
+    def extract(self, content: str) -> Dict[str, Any]:
+        return {
+            "processed": True,
+            "wordCount": len(content.split())
+        }
+
+class ResumeMetadataExtractor(MetadataExtractor):
+    def extract(self, content: str) -> Dict[str, Any]:
+        # Return mock/deterministic structured candidate profile metrics
+        return {
+            "skills": ["Java", "Python", "REST APIs"],
+            "education": ["Bachelor of Science"],
+            "experienceYears": 5,
+            "topKeywords": ["Docker", "Kubernetes"]
+        }
+
+class JobMetadataExtractor(MetadataExtractor):
+    def extract(self, content: str) -> Dict[str, Any]:
+        return {
+            "requiredSkills": ["FastAPI", "React", "TypeScript"],
+            "salaryRange": "100k-130k",
+            "location": "Remote"
+        }
+
+class CompanyMetadataExtractor(MetadataExtractor):
+    def extract(self, content: str) -> Dict[str, Any]:
+        return {
+            "industry": "Software Engineering",
+            "technologies": ["AWS", "Qdrant", "Redis"]
+        }

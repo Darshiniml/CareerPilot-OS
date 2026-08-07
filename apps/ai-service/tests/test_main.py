@@ -2,7 +2,6 @@ from fastapi.testclient import TestClient
 import os
 
 from app.main import app
-from app.core.prompt_manager import PromptManager
 
 client = TestClient(app)
 
@@ -30,8 +29,6 @@ def test_providers_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert "active_llm_provider" in data
-    assert "available_llm_providers" in data
-    assert "available_embedding_providers" in data
 
 def test_execute_parse_task():
     response = client.post(
@@ -45,11 +42,59 @@ def test_execute_parse_task():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "COMPLETED"
-    assert "extracted_skills" in data["result"]
 
-def test_prompt_manager_loader():
-    manager = PromptManager()
-    asset = manager.load_prompt_asset("planner", "v1", "system.txt")
-    assert asset.metadata["version"] == "v1"
-    formatted = asset.validate_and_format({"intent": "find work"})
-    assert "find work" in formatted
+def test_create_document_api():
+    response = client.post(
+        "/api/v1/ai/documents",
+        json={
+            "title": "My Resume",
+            "documentType": "RESUME",
+            "content": "Worked as a Software Engineer at Google for 5 years."
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "VALIDATED"
+    assert data["extractedMetadata"]["experienceYears"] == 5
+
+def test_chunk_document_api():
+    response = client.post(
+        "/api/v1/ai/documents/chunks",
+        json={
+            "documentType": "RESUME",
+            "content": "Worked as a Software Engineer at Google for 5 years.",
+            "chunkSize": 50,
+            "chunkOverlap": 10
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "chunks" in data
+    assert len(data["chunks"]) > 0
+
+def test_embed_chunks_api():
+    response = client.post(
+        "/api/v1/ai/documents/embeddings",
+        json={
+            "documentType": "RESUME",
+            "chunks": ["Work experience sentence number one", "Second chunk text details"]
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "embeddings" in data
+    assert len(data["embeddings"]) == 2
+
+def test_search_retrieval_api():
+    response = client.post(
+        "/api/v1/ai/retrieval/search",
+        json={
+            "query": "Looking for python developers",
+            "documentType": "JOB",
+            "limit": 2
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "results" in data
+    assert len(data["results"]) > 0

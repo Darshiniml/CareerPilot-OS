@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 import os
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import time
 import redis
 from qdrant_client import QdrantClient
@@ -13,6 +13,9 @@ from app.core.llm_provider import get_llm_provider, llm_registry
 from app.core.embedding_provider import get_embedding_provider, embedding_registry
 from app.core.memory import memory_registry
 from app.core.prompt_manager import PromptManager
+
+# Knowledge Platform imports
+from app.knowledge.factory.processors import document_factory
 
 app = FastAPI(
     title="CareerPilot OS AI Platform",
@@ -32,7 +35,9 @@ _metrics = {
     "total_requests": 0,
     "completed_tasks": 0,
     "failed_tasks": 0,
-    "total_latency_ms": 0.0
+    "total_latency_ms": 0.0,
+    "documents_processed": 0,
+    "chunk_count": 0
 }
 
 def verify_jwt(credentials: HTTPAuthorizationCredentials = Security(security)):
@@ -57,6 +62,27 @@ class ExecuteTaskResponse(BaseModel):
     result: Dict[str, Any]
     metadata: Dict[str, Any]
 
+class IngestDocumentRequest(BaseModel):
+    title: str
+    documentType: str
+    content: str
+
+class ChunkDocumentRequest(BaseModel):
+    documentType: str
+    content: str
+    chunkSize: Optional[int] = 500
+    chunkOverlap: Optional[int] = 100
+
+class EmbedChunksRequest(BaseModel):
+    documentType: str
+    chunks: List[str]
+
+class RetrievalSearchRequest(BaseModel):
+    query: str
+    documentType: str
+    limit: Optional[int] = 5
+    filters: Optional[Dict[str, Any]] = None
+
 @app.post("/api/v1/ai/execute", response_model=ExecuteTaskResponse)
 def execute_task(request: ExecuteTaskRequest):
     start_time = time.time()
@@ -71,34 +97,19 @@ def execute_task(request: ExecuteTaskRequest):
     
     try:
         if task_type == "RESUME_PARSE":
-            # Simulate parsing
             provider_name = settings.active_llm_provider
-            llm = get_llm_provider()
-            prompt_manager = PromptManager()
-            
-            # Simple metadata mock parsing simulation
-            system_prompt = prompt_manager.get_prompt("matching", "system.txt")
-            
-            result = {
-                "parsed": True,
-                "resumeId": payload.get("resumeId"),
-                "userId": payload.get("userId"),
-                "extracted_skills": ["Java", "Python", "Docker"],
-                "extracted_experience": [
-                    {"company": "Google", "role": "Senior Engineer"}
-                ]
-            }
+            processor = document_factory.get_processor("RESUME")
+            result = processor.extractor.extract(payload.get("resumeText", "Sample resume content"))
         elif task_type == "GENERATE_EMBEDDINGS":
             provider_name = settings.active_embedding_provider
             embedder = get_embedding_provider()
-            vector = embedder.embed_query("Sample resume text for vector embedding generation")
+            vector = embedder.embed_query(payload.get("chunkText", "Sample text"))
             result = {
                 "vector_dimension": len(vector),
                 "preview": vector[:5]
             }
         elif task_type == "JOB_MATCH":
             provider_name = settings.active_llm_provider
-            llm = get_llm_provider()
             result = {
                 "match_score": 85.5,
                 "keywords_found": ["Spring Boot", "FastAPI"],
@@ -126,11 +137,97 @@ def execute_task(request: ExecuteTaskRequest):
         )
     except Exception as e:
         _metrics["failed_tasks"] += 1
-        execution_time = int((time.time() - start_time) * 1000)
         raise HTTPException(
             status_code=500,
             detail=f"Task execution failed: {str(e)}"
         )
+
+# AI Knowledge Platform APIs
+@app.post("/api/v1/ai/documents")
+def create_document(request: IngestDocumentRequest):
+    start_time = time.time()
+    _metrics["total_requests"] += 1
+    _metrics["documents_processed"] += 1
+    
+    processor = document_factory.get_processor(request.documentType)
+    extracted_metadata = processor.extractor.extract(request.content)
+    
+    execution_time = int((time.time() - start_time) * 1000)
+    _metrics["total_latency_ms"] += execution_time
+    
+    return {
+        "status": "VALIDATED",
+        "documentType": request.documentType,
+        "extractedMetadata": extracted_metadata,
+        "executionTimeMs": execution_time
+    }
+
+@app.post("/api/v1/ai/documents/chunks")
+def chunk_document(request: ChunkDocumentRequest):
+    start_time = time.time()
+    _metrics["total_requests"] += 1
+    
+    processor = document_factory.get_processor(request.documentType)
+    chunks = processor.chunker.split(
+        request.content, 
+        size=request.chunkSize, 
+        overlap=request.chunkOverlap
+    )
+    
+    _metrics["chunk_count"] += len(chunks)
+    execution_time = int((time.time() - start_time) * 1000)
+    _metrics["total_latency_ms"] += execution_time
+    
+    return {
+        "chunks": chunks,
+        "executionTimeMs": execution_time
+    }
+
+@app.post("/api/v1/ai/documents/embeddings")
+def embed_chunks(request: EmbedChunksRequest):
+    start_time = time.time()
+    _metrics["total_requests"] += 1
+    
+    embedder = get_embedding_provider()
+    results = []
+    
+    for i, chunk_text in enumerate(request.chunks):
+        vector = embedder.embed_query(chunk_text)
+        results.append({
+            "vectorId": f"vec-{i}-{int(time.time())}",
+            "collection": f"{request.documentType.lower()}_vectors",
+            "vectorDimension": len(vector),
+            "embeddingModel": settings.default_model,
+            "embeddingVersion": "v1"
+        })
+        
+    execution_time = int((time.time() - start_time) * 1000)
+    _metrics["total_latency_ms"] += execution_time
+    
+    return {
+        "embeddings": results,
+        "executionTimeMs": execution_time
+    }
+
+@app.post("/api/v1/ai/retrieval/search")
+def search_retrieval(request: RetrievalSearchRequest):
+    start_time = time.time()
+    _metrics["total_requests"] += 1
+    
+    processor = document_factory.get_processor(request.documentType)
+    results = processor.retriever.retrieve(
+        query=request.query, 
+        limit=request.limit, 
+        filters=request.filters
+    )
+    
+    execution_time = int((time.time() - start_time) * 1000)
+    _metrics["total_latency_ms"] += execution_time
+    
+    return {
+        "results": results,
+        "executionTimeMs": execution_time
+    }
 
 @app.get("/api/v1/ai/health")
 def health_check():
@@ -142,7 +239,6 @@ def health_check():
 
 @app.get("/api/v1/ai/ready")
 def readiness_check():
-    # Simple check that config variables and mock registries are loaded
     ready = len(llm_registry.get_registered_names()) > 0
     return {
         "status": "ready" if ready else "not_ready",
@@ -153,13 +249,15 @@ def readiness_check():
 def metrics():
     avg_latency = 0.0
     if _metrics["completed_tasks"] > 0:
-        avg_latency = _metrics["total_latency_ms"] / _metrics["completed_tasks"]
+        avg_latency = _metrics["total_latency_ms"] / _metrics["total_requests"]
         
     return {
         "total_requests": _metrics["total_requests"],
         "completed_tasks": _metrics["completed_tasks"],
         "failed_tasks": _metrics["failed_tasks"],
-        "avg_latency_ms": avg_latency
+        "avg_latency_ms": avg_latency,
+        "documents_processed": _metrics["documents_processed"],
+        "chunk_count": _metrics["chunk_count"]
     }
 
 @app.get("/api/v1/ai/providers")
