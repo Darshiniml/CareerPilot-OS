@@ -64,3 +64,4 @@ docker compose up --build
 ### Completed
 - [x] **Milestone 1**: Directory structure, Gradle setups, JWT Authentication provider design, flyway baselines, MinIO connections, MDC logs correlation mapping, and FastAPI prompt loader configs.
 - [x] **Milestone 2**: User profile CRUD (Experiences, Educations, Projects, Certifications, Social links), normalized preferences tables (preferred roles/locations/companies), salary preference bounds, S3 resume upload, metadata hashing, soft deletes, and separated sub-service architecture.
+- [x] **Milestone 3**: AI Foundation Layer (AI Gateway with generic `executeTask` interface, timeout/retry interceptors, parent workflows, JSONB tasks database schema, registries for LLM and Embedding providers, versioned YAML prompt assets loader, memory abstractions, and `/ready`, `/metrics`, `/providers` endpoints).

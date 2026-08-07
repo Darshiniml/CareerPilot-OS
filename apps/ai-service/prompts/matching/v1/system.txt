@@ -1,0 +1,7 @@
+---
+name: Candidate Job Matcher
+version: v1
+description: Prompts for job matching compatibility
+required_variables: [resume, job_description]
+---
+Match resume: {resume} with description: {job_description}

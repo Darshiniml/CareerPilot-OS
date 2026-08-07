@@ -29,8 +29,6 @@ class OpenAIProvider(LLMProvider):
     def generate(self, prompt: str, system_prompt: Optional[str] = None, variables: Optional[Dict[str, Any]] = None) -> str:
         if not self.api_key:
             return MockProvider().generate(prompt, system_prompt, variables)
-        # Real implementation using langchain_openai or openai sdk
-        # return ChatOpenAI(api_key=self.api_key, model=self.model).invoke(prompt).content
         return f"[OpenAI {self.model}] Response for: {prompt[:30]}..."
 
 class GeminiProvider(LLMProvider):
@@ -41,7 +39,6 @@ class GeminiProvider(LLMProvider):
     def generate(self, prompt: str, system_prompt: Optional[str] = None, variables: Optional[Dict[str, Any]] = None) -> str:
         if not self.api_key:
             return MockProvider().generate(prompt, system_prompt, variables)
-        # Real implementation using langchain_google_genai or google-generativeai
         return f"[Gemini {self.model}] Response for: {prompt[:30]}..."
 
 class AnthropicProvider(LLMProvider):
@@ -52,7 +49,6 @@ class AnthropicProvider(LLMProvider):
     def generate(self, prompt: str, system_prompt: Optional[str] = None, variables: Optional[Dict[str, Any]] = None) -> str:
         if not self.api_key:
             return MockProvider().generate(prompt, system_prompt, variables)
-        # Real implementation using langchain_anthropic or anthropic sdk
         return f"[Anthropic {self.model}] Response for: {prompt[:30]}..."
 
 class LocalModelProvider(LLMProvider):
@@ -61,20 +57,33 @@ class LocalModelProvider(LLMProvider):
         self.model = model
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None, variables: Optional[Dict[str, Any]] = None) -> str:
-        # Real implementation using Ollama / Llama.cpp / vLLM client
         return f"[LocalModel {self.model} at {self.endpoint}] Response for: {prompt[:30]}..."
 
+# Provider Registry
+class LLMProviderRegistry:
+    def __init__(self):
+        self._providers = {}
+
+    def register(self, name: str, provider_class):
+        self._providers[name.lower()] = provider_class
+
+    def get_provider(self, name: str, **kwargs) -> LLMProvider:
+        name_lower = name.lower()
+        if name_lower not in self._providers:
+            return MockProvider()
+        return self._providers[name_lower](**kwargs)
+
+    def get_registered_names(self):
+        return list(self._providers.keys())
+
+llm_registry = LLMProviderRegistry()
+llm_registry.register("mock", MockProvider)
+llm_registry.register("openai", OpenAIProvider)
+llm_registry.register("gemini", GeminiProvider)
+llm_registry.register("anthropic", AnthropicProvider)
+llm_registry.register("local", LocalModelProvider)
 
 def get_llm_provider(provider_name: str = None, **kwargs) -> LLMProvider:
-    provider_name = provider_name or os.getenv("LLM_PROVIDER", "mock").lower()
-    
-    if provider_name == "openai":
-        return OpenAIProvider(**kwargs)
-    elif provider_name == "gemini":
-        return GeminiProvider(**kwargs)
-    elif provider_name == "anthropic":
-        return AnthropicProvider(**kwargs)
-    elif provider_name == "local":
-        return LocalModelProvider(**kwargs)
-    else:
-        return MockProvider()
+    from app.core.config import settings
+    provider_name = provider_name or settings.active_llm_provider
+    return llm_registry.get_provider(provider_name, **kwargs)

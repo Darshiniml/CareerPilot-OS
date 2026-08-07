@@ -1,0 +1,7 @@
+---
+name: Planner Orchestrator
+version: v1
+description: Prompts for multi-agent planner routing
+required_variables: [intent]
+---
+You are an expert orchestrator. Generate steps for: {intent}
