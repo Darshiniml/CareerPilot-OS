@@ -56,6 +56,7 @@ public class CareerCopilotEngine {
         CopilotIntent intent = intentRouter.classify(request);
         CopilotContext context = contextBuilder.build(intent, null, null, null);
         context.setUserId(userId);
+        context.getRetrievedKnowledge().put("query", request != null ? request : "");
         knowledgeRetriever.retrieve(context, intent);
         String action = actionOrchestrator.execute(context);
         List<CopilotRecommendation> recs = recommendationEngine.generate(context);

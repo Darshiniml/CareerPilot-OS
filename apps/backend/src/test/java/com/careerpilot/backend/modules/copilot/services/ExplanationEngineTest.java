@@ -15,6 +15,6 @@ class ExplanationEngineTest {
         recommendation.setEvidence(java.util.List.of("18 matching jobs require AWS"));
 
         var explanation = engine.explain(recommendation);
-        assertThat(explanation).contains("evidence");
+        assertThat(explanation).contains("Evidence");
     }
 }

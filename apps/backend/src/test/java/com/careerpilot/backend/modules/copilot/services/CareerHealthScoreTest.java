@@ -17,7 +17,7 @@ class CareerHealthScoreTest {
         context.setApplicationData(java.util.Map.of("successRate", 0.65));
 
         var score = service.calculate(context);
-        assertThat(score.getOverallScore()).isGreaterThan(0.0);
-        assertThat(score.getCategoryScores()).containsKey("resumeQuality");
+        assertThat(score.overallScore()).isGreaterThan(0.0);
+        assertThat(score.categoryScores()).containsKey("resumeQuality");
     }
 }

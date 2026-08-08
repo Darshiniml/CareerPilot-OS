@@ -27,7 +27,7 @@ public class RankingEngine {
             case "CAREER_GROWTH" -> rankByCareerGrowth(jobs);
             case "SALARY" -> rankBySalary(jobs);
             case "LEARNING_OPPORTUNITY" -> rankByLearningOpportunity(jobs);
-            case "CUSTOM" -> rankByCustomWeights(jobs, request.getCustomWeights());
+            case "CUSTOM" -> rankByCustomWeights(jobs, convertWeightsToMap(request.getCustomWeights()));
             default -> rankByOverallScore(jobs);
         };
     }
@@ -143,5 +143,26 @@ public class RankingEngine {
         return jobs.stream()
                 .limit(limit)
                 .collect(Collectors.toList());
+    }
+
+    private Map<String, Double> convertWeightsToMap(com.careerpilot.shared.dto.ai.matching.MatchWeightsDto weights) {
+        if (weights == null) return Map.of();
+        Map<String, Double> map = new HashMap<>();
+        map.put("skillMatch", weights.getSkillMatch());
+        map.put("experienceMatch", weights.getExperienceMatch());
+        map.put("projectMatch", weights.getProjectMatch());
+        map.put("technologyMatch", weights.getTechnologyMatch());
+        map.put("locationMatch", weights.getLocationMatch());
+        map.put("salaryMatch", weights.getSalaryMatch());
+        map.put("cultureMatch", weights.getCultureMatch());
+        map.put("educationMatch", weights.getEducationMatch());
+        map.put("certificationMatch", weights.getCertificationMatch());
+        map.put("responsibilityMatch", weights.getResponsibilityMatch());
+        map.put("industryMatch", weights.getIndustryMatch());
+        map.put("remotePreferenceMatch", weights.getRemotePreferenceMatch());
+        map.put("employmentTypeMatch", weights.getEmploymentTypeMatch());
+        map.put("careerGrowthMatch", weights.getCareerGrowthMatch());
+        map.put("learningOpportunityMatch", weights.getLearningOpportunityMatch());
+        return map;
     }
 }

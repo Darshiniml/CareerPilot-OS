@@ -46,8 +46,8 @@ public class AiChunk {
     @Column(name = "source_document_version")
     private Integer sourceDocumentVersion;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata", columnDefinition = "jsonb")
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "metadata", columnDefinition = "text")
     private Map<String, Object> metadata;
     
     @Column(name = "created_at", nullable = false, updatable = false)

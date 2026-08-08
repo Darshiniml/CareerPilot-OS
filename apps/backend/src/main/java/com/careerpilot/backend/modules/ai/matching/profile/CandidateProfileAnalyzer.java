@@ -86,7 +86,7 @@ public class CandidateProfileAnalyzer {
                 .seniorityLevel(inferSeniority(totalYears, lastTitle))
                 .educationLevels(educationLevels)
                 .certifications(certifications)
-                .projectTechnologies(normalizeSet(projectTechs))
+                .projectTechnologies(new ArrayList<>(normalizeSet(projectTechs)))
                 .projectDescriptions(projectDescs.stream().filter(Objects::nonNull).toList())
                 .languages(languages)
                 .atsQuality(atsQuality)

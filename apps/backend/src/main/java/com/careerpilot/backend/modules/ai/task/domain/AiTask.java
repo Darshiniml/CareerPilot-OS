@@ -62,12 +62,12 @@ public class AiTask {
     @Column(name = "failure_reason")
     private String failureReason;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "payload", columnDefinition = "jsonb")
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "payload", columnDefinition = "text")
     private Map<String, Object> payload;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata", columnDefinition = "jsonb")
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "metadata", columnDefinition = "text")
     private Map<String, Object> metadata;
     
     @Column(name = "created_at", nullable = false, updatable = false)

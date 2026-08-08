@@ -24,16 +24,16 @@ public class CompanyIntelligenceCache {
     @Column(name = "acquired_content", nullable = false)
     private String acquiredContent;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "structured_knowledge", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "structured_knowledge", columnDefinition = "text", nullable = false)
     private Map<String, Object> structuredKnowledge;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "metadata", columnDefinition = "text", nullable = false)
     private Map<String, Object> metadata;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "insights", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "insights", columnDefinition = "text", nullable = false)
     private Map<String, Object> insights;
 
     @Column(name = "last_indexed_at")

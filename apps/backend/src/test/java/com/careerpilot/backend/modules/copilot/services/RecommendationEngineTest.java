@@ -16,6 +16,6 @@ class RecommendationEngineTest {
 
         var recommendations = engine.generate(context);
         assertThat(recommendations).isNotEmpty();
-        assertThat(recommendations.get(0).getReason()).contains("evidence");
+        assertThat(recommendations.get(0).getReason()).contains("Evidence");
     }
 }

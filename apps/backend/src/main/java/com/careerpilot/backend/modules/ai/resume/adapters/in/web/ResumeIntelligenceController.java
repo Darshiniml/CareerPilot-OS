@@ -6,6 +6,8 @@ import com.careerpilot.backend.modules.ai.resume.domain.ResumeValidationReport;
 import com.careerpilot.backend.modules.ai.resume.repositories.ResumeValidationReportRepository;
 import com.careerpilot.backend.modules.ai.resume.services.ResumeIntelligenceService;
 import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
+import com.careerpilot.backend.modules.auth.domain.User;
+import com.careerpilot.backend.modules.auth.domain.UserRepository;
 import com.careerpilot.shared.dto.ai.AiTaskRequestDto;
 import com.careerpilot.shared.dto.ai.AiTaskResponseDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.*;
 
 @RestController
@@ -26,51 +29,100 @@ public class ResumeIntelligenceController {
     private final ResumeValidationReportRepository validationReportRepository;
     private final ResumeIntelligenceService resumeIntelligenceService;
     private final AiGatewayClient gatewayClient;
+    private final UserRepository userRepository;
 
     public ResumeIntelligenceController(
             AiDocumentRepository documentRepository,
             ResumeValidationReportRepository validationReportRepository,
             ResumeIntelligenceService resumeIntelligenceService,
-            AiGatewayClient gatewayClient) {
+            AiGatewayClient gatewayClient,
+            UserRepository userRepository) {
         this.documentRepository = documentRepository;
         this.validationReportRepository = validationReportRepository;
         this.resumeIntelligenceService = resumeIntelligenceService;
         this.gatewayClient = gatewayClient;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/process")
     @Operation(summary = "Process uploaded resume document", description = "Triggers section parsing, skill mapping, ATS calculations, and Qdrant indexing")
-    public ResponseEntity<AiDocument> processResume(@RequestParam("documentId") UUID documentId) {
-        AiDocument doc = resumeIntelligenceService.processResume(documentId);
-        return ResponseEntity.ok(doc);
+    public ResponseEntity<?> processResume(
+            @RequestBody Map<String, String> body,
+            Principal principal) {
+
+        String resumeId = body.get("resumeId");
+        String documentId = body.get("documentId");
+
+        // Resolve the AiDocument — prefer explicit documentId, fall back to user's latest resume document
+        AiDocument doc = null;
+        if (documentId != null && !documentId.isBlank()) {
+            doc = documentRepository.findById(UUID.fromString(documentId)).orElse(null);
+        }
+        if (doc == null && principal != null) {
+            User user = userRepository.findByEmail(principal.getName()).orElse(null);
+            if (user != null) {
+                doc = documentRepository
+                        .findFirstByOwnerIdAndDocumentTypeOrderByCreatedAtDesc(user.getId(), "RESUME")
+                        .orElse(null);
+            }
+        }
+        if (doc == null && resumeId != null && !resumeId.isBlank()) {
+            // Last resort: try the resumeId directly as an AiDocument ID
+            try {
+                doc = documentRepository.findById(UUID.fromString(resumeId)).orElse(null);
+            } catch (Exception ignored) {}
+        }
+        if (doc == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "No processed resume document found. Please upload a resume first."));
+        }
+
+        AiDocument result = resumeIntelligenceService.processResume(doc.getId());
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Get parsed Resume Knowledge")
-    public ResponseEntity<Map<String, Object>> getResumeKnowledge(@PathVariable("id") UUID id) {
-        AiDocument doc = documentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Resume not found"));
-        return ResponseEntity.ok(doc.getStructuredMetadata() != null ? doc.getStructuredMetadata() : new HashMap<>());
-    }
-
-    @GetMapping("/{id}/metadata")
-    @Operation(summary = "Get structured metadata details")
-    public ResponseEntity<Map<String, Object>> getResumeMetadata(@PathVariable("id") UUID id) {
-        AiDocument doc = documentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Resume not found"));
-        Map<String, Object> meta = new HashMap<>();
-        meta.put("checksum", doc.getChecksum());
-        meta.put("version", doc.getVersion());
-        meta.put("status", doc.getStatus());
-        return ResponseEntity.ok(meta);
+    public ResponseEntity<Map<String, Object>> getResumeKnowledge(
+            @PathVariable("id") String id,
+            Principal principal) {
+        AiDocument doc = resolveDocument(id, principal);
+        if (doc == null) return ResponseEntity.ok(new HashMap<>());
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", doc.getId());
+        result.put("status", doc.getStatus());
+        result.put("structuredKnowledge", doc.getStructuredMetadata());
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}/ats")
     @Operation(summary = "Get ATS quality metrics & reports")
-    public ResponseEntity<Map<String, Object>> getResumeAts(@PathVariable("id") UUID id) {
-        AiDocument doc = documentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Resume not found"));
+    public ResponseEntity<Map<String, Object>> getResumeAts(
+            @PathVariable("id") String id,
+            Principal principal) {
+        AiDocument doc = resolveDocument(id, principal);
+        if (doc == null) return ResponseEntity.ok(new HashMap<>());
         return ResponseEntity.ok(doc.getFlexibleMetadata() != null ? doc.getFlexibleMetadata() : new HashMap<>());
+    }
+
+    /** Resolve AiDocument: try direct UUID, then fall back to user's latest RESUME document */
+    private AiDocument resolveDocument(String id, Principal principal) {
+        // Try as direct AiDocument UUID
+        try {
+            UUID uuid = UUID.fromString(id);
+            AiDocument doc = documentRepository.findById(uuid).orElse(null);
+            if (doc != null) return doc;
+        } catch (Exception ignored) {}
+
+        // Fall back to user's latest resume document
+        if (principal != null) {
+            User user = userRepository.findByEmail(principal.getName()).orElse(null);
+            if (user != null) {
+                return documentRepository
+                        .findFirstByOwnerIdAndDocumentTypeOrderByCreatedAtDesc(user.getId(), "RESUME")
+                        .orElse(null);
+            }
+        }
+        return null;
     }
 
     @PostMapping("/search")

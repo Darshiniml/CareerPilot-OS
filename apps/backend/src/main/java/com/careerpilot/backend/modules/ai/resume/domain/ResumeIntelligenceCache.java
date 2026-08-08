@@ -24,12 +24,12 @@ public class ResumeIntelligenceCache {
     @Column(name = "parsed_text", nullable = false)
     private String parsedText;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "structured_knowledge", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "structured_knowledge", columnDefinition = "text", nullable = false)
     private Map<String, Object> structuredKnowledge;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "quality_metrics", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "quality_metrics", columnDefinition = "text", nullable = false)
     private Map<String, Object> qualityMetrics;
     
     @Column(name = "created_at", nullable = false, updatable = false)

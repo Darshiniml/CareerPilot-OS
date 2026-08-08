@@ -24,20 +24,20 @@ public class JobIntelligenceCache {
     @Column(name = "parsed_text", nullable = false)
     private String parsedText;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "structured_knowledge", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "structured_knowledge", columnDefinition = "text", nullable = false)
     private Map<String, Object> structuredKnowledge;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "metadata", columnDefinition = "text", nullable = false)
     private Map<String, Object> metadata;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "quality_metrics", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "quality_metrics", columnDefinition = "text", nullable = false)
     private Map<String, Object> qualityMetrics;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "insights", columnDefinition = "jsonb", nullable = false)
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "insights", columnDefinition = "text", nullable = false)
     private Map<String, Object> insights;
 
     @Column(name = "last_indexed_at")

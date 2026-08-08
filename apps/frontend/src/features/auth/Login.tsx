@@ -21,7 +21,7 @@ export const Login: React.FC = () => {
       const response = await api.post('/auth/login', { email, password });
       const { user, accessToken, refreshToken } = response.data;
       setAuth(user, accessToken, refreshToken);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Authentication failed. Please try again.');
     } finally {

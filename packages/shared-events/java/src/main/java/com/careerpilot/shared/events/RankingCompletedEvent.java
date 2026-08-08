@@ -6,6 +6,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -19,4 +20,5 @@ public class RankingCompletedEvent extends BaseEvent {
     private int jobCount;
     private String rankingStrategy;
     private long latencyMs;
+    private List<UUID> jobIds;
 }

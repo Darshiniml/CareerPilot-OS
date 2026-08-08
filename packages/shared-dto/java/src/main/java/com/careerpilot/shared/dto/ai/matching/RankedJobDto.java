@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
 public class RankedJobDto {
     private int rank;
     private UUID jobId;
+    private UUID companyId;
     private double overallScore;
     private double skillScore;
     private double companyFitScore;
@@ -22,4 +24,6 @@ public class RankedJobDto {
     private double salaryScore;
     private double learningOpportunityScore;
     private Map<String, Double> individualScores;
+    private List<String> strengths;
+    private List<String> weaknesses;
 }

@@ -23,7 +23,7 @@ class TechnologyMatchScorerTest {
     @Test
     void testPerfectTechnologyMatch() {
         CandidateProfile candidate = CandidateProfile.builder()
-                .technologies(Set.of("java", "spring", "react", "postgresql"))
+                .technologies(Set.of("java", "spring", "react"))
                 .build();
 
         JobProfile job = JobProfile.builder()

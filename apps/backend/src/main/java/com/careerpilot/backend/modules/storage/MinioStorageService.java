@@ -62,7 +62,7 @@ public class MinioStorageService implements StorageService {
             return fileUrl;
         } catch (Exception e) {
             log.error("Failed to upload file {} to S3: {}", fileName, e.getMessage());
-            throw new RuntimeException("File upload failed", e);
+            throw new RuntimeException("File upload failed: " + e.getMessage(), e);
         }
     }
 

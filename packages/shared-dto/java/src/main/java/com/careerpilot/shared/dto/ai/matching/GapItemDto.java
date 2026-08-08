@@ -10,6 +10,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GapItemDto {
+    private String type;
+    private String name;
     private String category;
     private String description;
     private String severity;

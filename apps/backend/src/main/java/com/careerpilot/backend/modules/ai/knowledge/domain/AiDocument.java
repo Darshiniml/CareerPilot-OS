@@ -46,12 +46,12 @@ public class AiDocument {
     
     private String content;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "structured_metadata", columnDefinition = "jsonb")
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "structured_metadata", columnDefinition = "text")
     private Map<String, Object> structuredMetadata;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "flexible_metadata", columnDefinition = "jsonb")
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "flexible_metadata", columnDefinition = "text")
     private Map<String, Object> flexibleMetadata;
     
     @Builder.Default

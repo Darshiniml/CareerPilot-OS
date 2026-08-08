@@ -36,8 +36,8 @@ public class ResumeValidationReport {
     @Builder.Default
     private boolean hasLinkedin = false;
     
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "validation_warnings", columnDefinition = "jsonb")
+    @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)
+    @Column(name = "validation_warnings", columnDefinition = "text")
     private Map<String, Object> validationWarnings;
     
     @Column(name = "created_at", nullable = false, updatable = false)

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Data
@@ -23,4 +24,14 @@ public class MatchRequestDto {
     private UUID userId;
     private MatchWeightsDto customWeights;
     private boolean skipCache;
+
+    private Map<String, Object> candidateKnowledge;
+    private Map<String, Object> candidateQualityMetrics;
+    private Map<String, Object> candidatePreferences;
+    private Map<String, Object> companyKnowledge;
+    private Map<String, Object> companyMetadata;
+    private Map<String, Object> companyInsights;
+    private Map<String, Object> jobKnowledge;
+    private Map<String, Object> jobMetadata;
+    private Map<String, Object> jobInsights;
 }

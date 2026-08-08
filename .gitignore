@@ -85,3 +85,8 @@ deployment/minio_data/
 .env
 .env.*
 !.env.example
+
+# Local DB and Heap Dumps
+*.hprof
+apps/backend/data/
+.todo.json

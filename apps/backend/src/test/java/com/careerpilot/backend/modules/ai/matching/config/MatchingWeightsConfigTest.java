@@ -78,7 +78,7 @@ class MatchingWeightsConfigTest {
     @Test
     void testValidateWeightsInvalidSum() {
         MatchWeightsDto invalidWeights = MatchWeightsDto.builder()
-                .skillMatch(0.50)
+                .skillMatch(0.80)
                 .experienceMatch(0.50)
                 .build();
 
