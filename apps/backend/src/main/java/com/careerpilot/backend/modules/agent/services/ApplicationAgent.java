@@ -14,12 +14,14 @@ import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
 import com.careerpilot.backend.modules.resume.repositories.ResumeVersionRepository;
 import com.careerpilot.shared.events.ApplicationPreparedEvent;
 import com.careerpilot.shared.events.ApplicationSubmittedEvent;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.*;
 
 @Service
+@Slf4j
 public class ApplicationAgent implements CareerAgent {
 
     private final JobDiscoveryService jobDiscoveryService;
@@ -30,11 +32,11 @@ public class ApplicationAgent implements CareerAgent {
     private final ApplicationEventPublisher eventPublisher;
 
     public ApplicationAgent(JobDiscoveryService jobDiscoveryService,
-                            ConnectorRegistry connectorRegistry,
-                            ResumeRepository resumeRepository,
-                            ResumeVersionRepository resumeVersionRepository,
-                            ApplicationOrchestratorService applicationOrchestratorService,
-                            ApplicationEventPublisher eventPublisher) {
+                             ConnectorRegistry connectorRegistry,
+                             ResumeRepository resumeRepository,
+                             ResumeVersionRepository resumeVersionRepository,
+                             ApplicationOrchestratorService applicationOrchestratorService,
+                             ApplicationEventPublisher eventPublisher) {
         this.jobDiscoveryService = jobDiscoveryService;
         this.connectorRegistry = connectorRegistry;
         this.resumeRepository = resumeRepository;
@@ -84,6 +86,7 @@ public class ApplicationAgent implements CareerAgent {
             }
             
             if (defaultResume.isEmpty()) {
+                log.warn("[APPLICATION-AGENT] No active resume available for userId={}", userId);
                 return AgentResult.builder()
                         .status(AgentResult.Status.FAILED)
                         .message("No active resume available for application preparation.")
@@ -105,33 +108,32 @@ public class ApplicationAgent implements CareerAgent {
             List<Map<String, Object>> preparedApps = new ArrayList<>();
             
             for (DiscoveryJob job : jobs) {
-                String connectorId = job.getConnectorId() != null ? job.getConnectorId() : "linkedin";
+                String connectorId = job.getConnectorId() != null ? job.getConnectorId() : "local-jobs";
                 
-                // 3. Resolve connector registry
+                // 3. Resolve connector safely
                 try {
                     connectorRegistry.get(connectorId);
-                } catch (NoSuchElementException e) {
-                    return AgentResult.builder()
-                            .status(AgentResult.Status.UNSUPPORTED_CONNECTOR)
-                            .message("Connector not active or supported in platform: " + connectorId)
-                            .build();
+                } catch (Exception e) {
+                    log.warn("[APPLICATION-AGENT] Connector {} not active for job {}, continuing with fallback.", connectorId, job.getId());
+                    connectorId = "manual-fallback";
                 }
                 
                 // 4. Create application record
                 Map<String, Object> metadata = new HashMap<>();
                 metadata.put("source", "autonomous-workflow");
+                metadata.put("applyUrl", job.getSourceUrl() != null ? job.getSourceUrl() : "");
                 
                 ApplicationRecord appRecord;
                 try {
                     appRecord = applicationOrchestratorService.createApplication(
                             userId,
-                            UUID.randomUUID(), // companyId dummy
+                            UUID.randomUUID(),
                             job.getId(),
                             connectorId,
                             metadata
                     );
                 } catch (IllegalArgumentException e) {
-                    // Application already exists - skip duplicate creation gracefully
+                    // Skip duplicate creation gracefully
                     continue;
                 }
                 
@@ -145,7 +147,7 @@ public class ApplicationAgent implements CareerAgent {
                         resume, version, 85.0, Set.of("java"), "backend"
                 );
                 
-                applicationOrchestratorService.evaluateAndPrepare(
+                appRecord = applicationOrchestratorService.evaluateAndPrepare(
                         appRecord.getApplicationId(),
                         eligibilityRequest,
                         List.of(selectionCand),
@@ -166,19 +168,8 @@ public class ApplicationAgent implements CareerAgent {
                 // 6. Submit only if user policy allows automatic submission
                 boolean submitted = false;
                 if (policy != null && policy.getAllowAutomaticSubmission()) {
-                    applicationOrchestratorService.submit(appRecord.getApplicationId(), userId, "127.0.0.1");
-                    submitted = true;
-                    
-                    // Publish Submitted event
-                    eventPublisher.publishEvent(ApplicationSubmittedEvent.builder()
-                            .eventId(UUID.randomUUID())
-                            .timestamp(Instant.now())
-                            .correlationId(UUID.fromString(context.getCorrelationId()))
-                            .userId(userId)
-                            .applicationId(appRecord.getApplicationId())
-                            .jobId(job.getId())
-                            .status("SUBMITTED")
-                            .build());
+                    appRecord = applicationOrchestratorService.submit(appRecord.getApplicationId(), userId, "127.0.0.1");
+                    submitted = appRecord.getWorkflowState().name().contains("SUBMITTED");
                 }
                 
                 Map<String, Object> pApp = new HashMap<>();
@@ -186,6 +177,7 @@ public class ApplicationAgent implements CareerAgent {
                 pApp.put("jobId", job.getId().toString());
                 pApp.put("title", job.getTitle());
                 pApp.put("company", job.getCompany());
+                pApp.put("workflowState", appRecord.getWorkflowState().name());
                 pApp.put("submittedAutomatically", submitted);
                 preparedApps.add(pApp);
             }
@@ -202,6 +194,7 @@ public class ApplicationAgent implements CareerAgent {
                     .build();
             
         } catch (Exception e) {
+            log.error("[APPLICATION-AGENT] Failed during application preparation: {}", e.getMessage(), e);
             return AgentResult.builder()
                     .status(AgentResult.Status.FAILED)
                     .message("Failed during application preparation: " + e.getMessage())

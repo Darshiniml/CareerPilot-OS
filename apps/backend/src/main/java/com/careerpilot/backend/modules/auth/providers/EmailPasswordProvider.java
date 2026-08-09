@@ -26,7 +26,7 @@ public class EmailPasswordProvider implements AuthenticationProvider {
         }
 
         User user = userRepository.findByEmail(emailPasswordRequest.getEmail())
-                .orElseThrow(() -> new RuntimeException("Invalid email or password"));
+                .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
 
         boolean matches = passwordEncoder.matches(emailPasswordRequest.getPassword(), user.getPasswordHash());
 

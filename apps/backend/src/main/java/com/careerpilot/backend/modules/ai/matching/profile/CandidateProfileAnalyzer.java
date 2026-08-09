@@ -13,6 +13,9 @@ public class CandidateProfileAnalyzer {
 
     public CandidateProfile analyze(Map<String, Object> knowledge, Map<String, Object> qualityMetrics,
                                     Map<String, Object> preferences) {
+        if (knowledge == null) knowledge = Collections.emptyMap();
+        if (qualityMetrics == null) qualityMetrics = Collections.emptyMap();
+        if (preferences == null) preferences = Collections.emptyMap();
         CandidateProfile.CandidateProfileBuilder builder = CandidateProfile.builder();
 
         Set<String> skills = new LinkedHashSet<>();

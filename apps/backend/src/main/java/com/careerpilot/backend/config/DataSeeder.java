@@ -12,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -47,9 +48,10 @@ public class DataSeeder implements ApplicationRunner {
                 });
 
         // Create test user if missing
-        if (userRepository.findByEmail(TEST_EMAIL).isEmpty()) {
+        Optional<User> existingOpt = userRepository.findByEmail(TEST_EMAIL);
+        if (existingOpt.isEmpty()) {
             User user = User.builder()
-                    .id(UUID.randomUUID())
+                    .id(UUID.fromString("1b2ec552-9991-4186-b6a0-53b70dcca0f7"))
                     .email(TEST_EMAIL)
                     .passwordHash(passwordEncoder.encode(TEST_PASSWORD))
                     .firstName(TEST_FIRST)
@@ -59,7 +61,10 @@ public class DataSeeder implements ApplicationRunner {
             userRepository.save(user);
             log.info("DataSeeder: Created test user → {}", TEST_EMAIL);
         } else {
-            log.info("DataSeeder: Test user already exists → {}", TEST_EMAIL);
+            User user = existingOpt.get();
+            user.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
+            userRepository.save(user);
+            log.info("DataSeeder: Updated test user password → {}", TEST_EMAIL);
         }
     }
 }

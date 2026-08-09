@@ -1,46 +1,70 @@
 package com.careerpilot.backend.modules.ai.matching.adapters.in.web;
 
 import com.careerpilot.backend.modules.ai.matching.MatchingEngine;
-import com.careerpilot.shared.dto.ai.matching.BulkMatchRequestDto;
-import com.careerpilot.shared.dto.ai.matching.GapAnalysisRequestDto;
-import com.careerpilot.shared.dto.ai.matching.GapAnalysisResultDto;
-import com.careerpilot.shared.dto.ai.matching.MatchRequestDto;
-import com.careerpilot.shared.dto.ai.matching.MatchResultDto;
-import com.careerpilot.shared.dto.ai.matching.MatchWeightsDto;
-import com.careerpilot.shared.dto.ai.matching.RankingRequestDto;
-import com.careerpilot.shared.dto.ai.matching.RankingResultDto;
-import com.careerpilot.shared.dto.ai.matching.RecommendationItemDto;
-import com.careerpilot.shared.dto.ai.matching.RecommendationRequestDto;
+import com.careerpilot.backend.modules.auth.domain.UserRepository;
+import com.careerpilot.backend.modules.discovery.repositories.DiscoveryJobRepository;
+import com.careerpilot.shared.dto.ai.matching.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.UUID;
+import java.security.Principal;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1/ai/matching")
 public class MatchingController {
 
     private final MatchingEngine matchingEngine;
+    private final DiscoveryJobRepository jobRepository;
+    private final UserRepository userRepository;
 
-    public MatchingController(MatchingEngine matchingEngine) {
+    public MatchingController(MatchingEngine matchingEngine, DiscoveryJobRepository jobRepository, UserRepository userRepository) {
         this.matchingEngine = matchingEngine;
+        this.jobRepository = jobRepository;
+        this.userRepository = userRepository;
+    }
+
+    private UUID getUserId(Principal principal) {
+        if (principal == null || principal.getName() == null) return null;
+        return userRepository.findByEmail(principal.getName()).map(u -> u.getId()).orElse(null);
     }
 
     @PostMapping("/match")
-    public ResponseEntity<MatchResultDto> matchCandidateToJob(@RequestBody MatchRequestDto request) {
+    public ResponseEntity<MatchResultDto> matchCandidateToJob(@RequestBody MatchRequestDto request, Principal principal) {
+        UUID currentUserId = request.getUserId() != null ? request.getUserId() : getUserId(principal);
+        UUID candidateId = request.getCandidateId() != null ? request.getCandidateId() : currentUserId;
+        if (candidateId == null) {
+            candidateId = UUID.randomUUID();
+        }
+
+        Map<String, Object> jobKnowledge = request.getJobKnowledge();
+        if ((jobKnowledge == null || jobKnowledge.isEmpty()) && request.getJobId() != null) {
+            var jobOpt = jobRepository.findById(request.getJobId());
+            if (jobOpt.isPresent()) {
+                var job = jobOpt.get();
+                jobKnowledge = new HashMap<>();
+                jobKnowledge.put("title", job.getTitle());
+                jobKnowledge.put("company", job.getCompany());
+                jobKnowledge.put("locations", List.of(job.getLocation() != null ? job.getLocation() : ""));
+                jobKnowledge.put("rawContent", job.getRawContent() != null ? job.getRawContent() : "");
+                List<Map<String, Object>> skillsList = new ArrayList<>();
+                skillsList.add(Map.of("name", job.getTitle(), "importance", "REQUIRED"));
+                jobKnowledge.put("requiredSkills", skillsList);
+            }
+        }
+
         MatchResultDto result = matchingEngine.matchCandidateToJob(
-                request.getCandidateId(),
+                candidateId,
                 request.getJobId(),
                 request.getCompanyId(),
-                request.getUserId(),
+                currentUserId,
                 request.getCandidateKnowledge(),
                 request.getCandidateQualityMetrics(),
                 request.getCandidatePreferences(),
                 request.getCompanyKnowledge(),
                 request.getCompanyMetadata(),
                 request.getCompanyInsights(),
-                request.getJobKnowledge(),
+                jobKnowledge,
                 request.getJobMetadata(),
                 request.getJobInsights()
         );
@@ -55,8 +79,6 @@ public class MatchingController {
 
     @GetMapping("/match/{matchId}")
     public ResponseEntity<MatchResultDto> getMatchResult(@PathVariable UUID matchId) {
-        // This would typically fetch from a database, but for now we'll return a placeholder
-        // In a real implementation, you'd have a MatchResultRepository
         return ResponseEntity.notFound().build();
     }
 

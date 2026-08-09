@@ -18,19 +18,22 @@ public class MatchingCache {
     }
 
     public static String generateCacheKey(UUID candidateId, UUID jobId) {
-        return candidateId + ":" + jobId;
+        return (candidateId != null ? candidateId.toString() : "anon") + ":" + (jobId != null ? jobId.toString() : "unknown");
     }
 
     public MatchResultDto get(String key) {
+        if (key == null) return null;
         return cache.get(key);
     }
 
     public void put(String key, MatchResultDto result) {
-        cache.put(key, result);
+        if (key != null && result != null) {
+            cache.put(key, result);
+        }
     }
 
     public void remove(String key) {
-        cache.remove(key);
+        if (key != null) cache.remove(key);
     }
 
     public void clear() {

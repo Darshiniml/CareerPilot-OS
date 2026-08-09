@@ -1,3 +1,17 @@
 package com.careerpilot.backend.modules.application.repositories;
-import com.careerpilot.backend.modules.application.domain.*; import org.springframework.data.jpa.repository.*; import org.springframework.data.repository.query.Param; import jakarta.persistence.LockModeType; import java.util.*;
-public interface ApplicationRecordRepository extends JpaRepository<ApplicationRecord,UUID> { boolean existsByCandidateIdAndJobId(UUID candidateId,UUID jobId); List<ApplicationRecord> findByCandidateIdOrderByCreatedAtDesc(UUID candidateId); long countByWorkflowState(WorkflowState state); @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select a from ApplicationRecord a where a.applicationId=:id") Optional<ApplicationRecord> findByIdForUpdate(@Param("id") UUID id); }
+
+import com.careerpilot.backend.modules.application.domain.*;
+import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
+import java.util.*;
+
+public interface ApplicationRecordRepository extends JpaRepository<ApplicationRecord, UUID> {
+    boolean existsByCandidateIdAndJobId(UUID candidateId, UUID jobId);
+    Optional<ApplicationRecord> findByCandidateIdAndJobId(UUID candidateId, UUID jobId);
+    List<ApplicationRecord> findByCandidateIdOrderByCreatedAtDesc(UUID candidateId);
+    long countByWorkflowState(WorkflowState state);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from ApplicationRecord a where a.applicationId=:id")
+    Optional<ApplicationRecord> findByIdForUpdate(@Param("id") UUID id);
+}

@@ -16,6 +16,9 @@ public class JobProfileAnalyzer {
 
     public JobProfile analyze(Map<String, Object> knowledge, Map<String, Object> metadata,
                               Map<String, Object> insights) {
+        if (knowledge == null) knowledge = Collections.emptyMap();
+        if (metadata == null) metadata = Collections.emptyMap();
+        if (insights == null) insights = Collections.emptyMap();
         JobProfile.JobProfileBuilder builder = JobProfile.builder();
 
         UUID companyId = null;

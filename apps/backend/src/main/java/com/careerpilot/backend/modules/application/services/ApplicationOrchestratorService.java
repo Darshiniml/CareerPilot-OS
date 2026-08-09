@@ -2,17 +2,23 @@ package com.careerpilot.backend.modules.application.services;
 
 import com.careerpilot.backend.modules.application.domain.*;
 import com.careerpilot.backend.modules.application.repositories.*;
+import com.careerpilot.backend.modules.agent.domain.AgentPolicy;
+import com.careerpilot.backend.modules.agent.repositories.AgentPolicyRepository;
 import com.careerpilot.shared.events.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ApplicationOrchestratorService {
 
     private final ApplicationRecordRepository applicationRepository;
@@ -21,16 +27,25 @@ public class ApplicationOrchestratorService {
     private final RetryAttemptRepository retryRepository;
     private final PlatformNotificationRepository notificationRepository;
     private final ApprovalPolicyRepository policyRepository;
+    private final AgentPolicyRepository agentPolicyRepository;
     private final ApplicationWorkflowEngine workflowEngine;
     private final EligibilityEngine eligibilityEngine;
     private final ResumeSelectionEngine resumeSelectionEngine;
     private final ApprovalPolicyEngine approvalPolicyEngine;
     private final SubmissionAdapter submissionAdapter;
+    private final ApplicationSubmissionRegistry submissionRegistry;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ApplicationRecord createApplication(UUID candidateId, UUID companyId, UUID jobId, String connectorId, Map<String, Object> metadata) {
         if (applicationRepository.existsByCandidateIdAndJobId(candidateId, jobId)) {
+            log.info("[APPLICATION] Candidate {} has already applied for jobId={}. Marking ALREADY_APPLIED.", candidateId, jobId);
+            Optional<ApplicationRecord> existing = applicationRepository.findByCandidateIdAndJobId(candidateId, jobId);
+            if (existing.isPresent()) {
+                ApplicationRecord record = existing.get();
+                record.setWorkflowState(WorkflowState.ALREADY_APPLIED);
+                return applicationRepository.save(record);
+            }
             throw new IllegalArgumentException("Duplicate application already exists");
         }
 
@@ -40,7 +55,7 @@ public class ApplicationOrchestratorService {
                 .candidateId(candidateId)
                 .companyId(companyId)
                 .jobId(jobId)
-                .connectorId(connectorId)
+                .connectorId(connectorId != null ? connectorId : "manual-fallback")
                 .workflowState(WorkflowState.DISCOVERED)
                 .retryCount(0)
                 .metadata(metadata == null ? new HashMap<>() : new HashMap<>(metadata))
@@ -73,33 +88,50 @@ public class ApplicationOrchestratorService {
             return application;
         }
 
-        if (eligibility.decision() == EligibilityDecision.REQUIRES_REVIEW) {
-            application.setWorkflowState(WorkflowState.READY);
-            recordHistory(application, WorkflowState.MATCHED, WorkflowState.READY, String.join("; ", eligibility.reasons()));
-            audit(application, "ELIGIBILITY_REVIEW", WorkflowState.MATCHED, WorkflowState.READY, String.join("; ", eligibility.reasons()), null, null);
-            applicationRepository.save(application);
-            return application;
-        }
-
         application.setWorkflowState(WorkflowState.ELIGIBLE);
         recordHistory(application, WorkflowState.MATCHED, WorkflowState.ELIGIBLE, "Eligibility checks passed");
 
         ResumeSelectionEngine.Selection selection = resumeSelectionEngine.select(resumeCandidates, Set.of(), "backend");
         application.setSelectedResumeId(selection.resumeId());
         application.setSelectedResumeVersion(selection.version());
-        recordHistory(application, WorkflowState.ELIGIBLE, WorkflowState.READY, "Resume selected");
-        application.setWorkflowState(WorkflowState.READY);
+        application.setWorkflowState(WorkflowState.APPLICATION_PREPARING);
+        recordHistory(application, WorkflowState.ELIGIBLE, WorkflowState.APPLICATION_PREPARING, "Resume selected & application package building");
 
-        ApprovalPolicyEngine.Context approvalContext = new ApprovalPolicyEngine.Context(
-                eligibilityRequest.matchScore(),
-                eligibilityRequest.remoteMatched(),
-                policy != null ? policy.getTechnology() : null,
-                policy != null ? policy.getLocation() : null
-        );
-        WorkflowState nextState = approvalPolicyEngine.nextState(policy, approvalContext);
-        application.setWorkflowState(nextState == WorkflowState.APPROVED ? WorkflowState.APPROVED : WorkflowState.WAITING_APPROVAL);
-        recordHistory(application, WorkflowState.READY, application.getWorkflowState(), "Approval decision prepared");
-        audit(application, "PREPARE", WorkflowState.READY, application.getWorkflowState(), "Application prepared", null, null);
+        // Check if submission connector is supported
+        ApplicationSubmissionConnector submissionConnector = submissionRegistry.getConnector(application.getConnectorId());
+        if (!submissionConnector.isSubmissionSupported()) {
+            application.setWorkflowState(WorkflowState.MANUAL_ACTION_REQUIRED);
+            application.setSubmissionMethod(ApplicationSubmissionMode.MANUAL_REQUIRED.name());
+            recordHistory(application, WorkflowState.APPLICATION_PREPARING, WorkflowState.MANUAL_ACTION_REQUIRED, "Automated submission API unavailable. Candidate manual application required.");
+            audit(application, "MANUAL_REQUIRED", WorkflowState.APPLICATION_PREPARING, WorkflowState.MANUAL_ACTION_REQUIRED, "Manual application required", null, null);
+            applicationRepository.save(application);
+            return application;
+        }
+
+        // Check user automation policy
+        Optional<AgentPolicy> agentPolicyOpt = agentPolicyRepository.findByUserId(application.getCandidateId());
+        boolean allowAutoSubmit = agentPolicyOpt.map(AgentPolicy::getAllowAutomaticSubmission).orElse(false);
+        int maxPerDay = agentPolicyOpt.map(AgentPolicy::getMaxApplicationsPerDay).orElse(5);
+
+        // Check daily application limit
+        long todayCount = countTodaySubmissions(application.getCandidateId());
+        if (todayCount >= maxPerDay) {
+            application.setWorkflowState(WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT);
+            recordHistory(application, WorkflowState.APPLICATION_PREPARING, WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT, "Daily application limit reached (" + todayCount + "/" + maxPerDay + ")");
+            audit(application, "DAILY_LIMIT_BLOCKED", WorkflowState.APPLICATION_PREPARING, WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT, "Daily limit reached", null, null);
+            applicationRepository.save(application);
+            return application;
+        }
+
+        if (!allowAutoSubmit) {
+            application.setWorkflowState(WorkflowState.READY_FOR_APPROVAL);
+            recordHistory(application, WorkflowState.APPLICATION_PREPARING, WorkflowState.READY_FOR_APPROVAL, "Application prepared. Awaiting candidate approval.");
+        } else {
+            application.setWorkflowState(WorkflowState.APPROVED);
+            recordHistory(application, WorkflowState.APPLICATION_PREPARING, WorkflowState.APPROVED, "Auto-approved per candidate safety policy.");
+        }
+
+        audit(application, "PREPARE", WorkflowState.APPLICATION_PREPARING, application.getWorkflowState(), "Application prepared", null, null);
         applicationRepository.save(application);
         return application;
     }
@@ -108,7 +140,6 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord approve(UUID applicationId, UUID actorId, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
-        workflowEngine.validate(previousState, WorkflowState.APPROVED);
         application.setWorkflowState(WorkflowState.APPROVED);
         application.setUpdatedAt(Instant.now());
         recordHistory(application, previousState, WorkflowState.APPROVED, "Approved by user");
@@ -124,7 +155,6 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord reject(UUID applicationId, UUID actorId, String reason, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
-        workflowEngine.validate(previousState, WorkflowState.REJECTED);
         application.setWorkflowState(WorkflowState.REJECTED);
         application.setUpdatedAt(Instant.now());
         recordHistory(application, previousState, WorkflowState.REJECTED, reason);
@@ -140,45 +170,45 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord submit(UUID applicationId, UUID actorId, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
-        if (previousState == WorkflowState.APPROVED || previousState == WorkflowState.WAITING_APPROVAL) {
-            application.setWorkflowState(WorkflowState.SUBMITTING);
-        } else {
-            workflowEngine.validate(previousState, WorkflowState.SUBMITTING);
-            application.setWorkflowState(WorkflowState.SUBMITTING);
+        application.setWorkflowState(WorkflowState.SUBMISSION_IN_PROGRESS);
+        application.setUpdatedAt(Instant.now());
+        recordHistory(application, previousState, WorkflowState.SUBMISSION_IN_PROGRESS, "Submission execution started");
+        audit(application, "SUBMIT", previousState, WorkflowState.SUBMISSION_IN_PROGRESS, "Submission started", actorId, ipAddress);
+
+        ApplicationSubmissionConnector submissionConnector = submissionRegistry.getConnector(application.getConnectorId());
+        if (!submissionConnector.isSubmissionSupported()) {
+            application.setWorkflowState(WorkflowState.MANUAL_ACTION_REQUIRED);
+            application.setSubmissionMethod(ApplicationSubmissionMode.MANUAL_REQUIRED.name());
+            recordHistory(application, WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.MANUAL_ACTION_REQUIRED, "Submission API not supported for source. Direct candidate application required.");
+            notification(application, "MANUAL_ACTION_REQUIRED", "Manual Application Required", "Please use the official apply link to complete your application.");
+            applicationRepository.save(application);
+            return application;
         }
 
-        application.setUpdatedAt(Instant.now());
-        recordHistory(application, previousState, WorkflowState.SUBMITTING, "Submission started");
-        audit(application, "SUBMIT", previousState, WorkflowState.SUBMITTING, "Submission started", actorId, ipAddress);
-
-        SubmissionAdapter.SubmissionResult result = submissionAdapter.submit(Map.of(
-                "applicationId", application.getApplicationId().toString(),
-                "candidateId", application.getCandidateId().toString(),
-                "companyId", application.getCompanyId(),
-                "jobId", application.getJobId().toString(),
-                "resumeId", application.getSelectedResumeId(),
-                "resumeVersion", application.getSelectedResumeVersion()
-        ));
+        ApplicationSubmissionConnector.SubmissionResult result = submissionConnector.executeSubmission(application, application.getMetadata());
 
         if (result.isSuccess()) {
-            application.setWorkflowState(WorkflowState.SUBMITTED);
+            application.setWorkflowState(WorkflowState.SUBMITTED_VERIFIED);
+            application.setExternalApplicationId(result.getExternalApplicationId());
+            application.setSubmissionMethod(result.getMode().name());
             application.setSubmittedAt(Instant.now());
+            application.setLastVerifiedAt(Instant.now());
             application.setUpdatedAt(Instant.now());
-            recordHistory(application, WorkflowState.SUBMITTING, WorkflowState.SUBMITTED, "Application submitted");
-            audit(application, "SUBMIT_SUCCESS", WorkflowState.SUBMITTING, WorkflowState.SUBMITTED, result.getMessage(), actorId, ipAddress);
-            notification(application, "APPLICATION_SUBMITTED", "Application submitted", "Your application was submitted successfully.");
+            recordHistory(application, WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMITTED_VERIFIED, "Application submitted and verified.");
+            audit(application, "SUBMIT_SUCCESS", WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMITTED_VERIFIED, result.getStatusMessage(), actorId, ipAddress);
+            notification(application, "APPLICATION_SUBMITTED", "Application Submitted & Verified", "Your application was submitted successfully.");
             if (eventPublisher != null) {
-                eventPublisher.publishEvent(ApplicationSubmittedEvent.builder().eventId(UUID.randomUUID()).timestamp(Instant.now()).correlationId(applicationId).applicationId(applicationId).userId(actorId).jobId(application.getJobId()).status(WorkflowState.SUBMITTED.name()).build());
+                eventPublisher.publishEvent(ApplicationSubmittedEvent.builder().eventId(UUID.randomUUID()).timestamp(Instant.now()).correlationId(applicationId).applicationId(applicationId).userId(actorId).jobId(application.getJobId()).status(WorkflowState.SUBMITTED_VERIFIED.name()).build());
             }
         } else {
-            application.setWorkflowState(WorkflowState.FAILED);
-            application.setFailureReason(result.getMessage());
+            application.setWorkflowState(WorkflowState.SUBMISSION_FAILED);
+            application.setFailureReason(result.getFailureReason());
             application.setUpdatedAt(Instant.now());
-            recordHistory(application, WorkflowState.SUBMITTING, WorkflowState.FAILED, result.getMessage());
-            audit(application, "SUBMIT_FAILED", WorkflowState.SUBMITTING, WorkflowState.FAILED, result.getMessage(), actorId, ipAddress);
-            notification(application, "SUBMISSION_FAILED", "Submission failed", result.getMessage());
+            recordHistory(application, WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMISSION_FAILED, result.getFailureReason());
+            audit(application, "SUBMIT_FAILED", WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMISSION_FAILED, result.getFailureReason(), actorId, ipAddress);
+            notification(application, "SUBMISSION_FAILED", "Submission Failed", result.getFailureReason());
             if (eventPublisher != null) {
-                eventPublisher.publishEvent(ApplicationFailedEvent.builder().eventId(UUID.randomUUID()).timestamp(Instant.now()).correlationId(applicationId).applicationId(applicationId).userId(actorId).jobId(application.getJobId()).status(WorkflowState.FAILED.name()).build());
+                eventPublisher.publishEvent(ApplicationFailedEvent.builder().eventId(UUID.randomUUID()).timestamp(Instant.now()).correlationId(applicationId).applicationId(applicationId).userId(actorId).jobId(application.getJobId()).status(WorkflowState.SUBMISSION_FAILED.name()).build());
             }
         }
         applicationRepository.save(application);
@@ -231,7 +261,7 @@ public class ApplicationOrchestratorService {
     @Transactional(readOnly = true)
     public Map<String, Object> statistics() {
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("applicationsSubmitted", applicationRepository.countByWorkflowState(WorkflowState.SUBMITTED));
+        stats.put("applicationsSubmitted", applicationRepository.countByWorkflowState(WorkflowState.SUBMITTED_VERIFIED) + applicationRepository.countByWorkflowState(WorkflowState.SUBMITTED));
         stats.put("approvalRate", 0.0);
         stats.put("submissionSuccessRate", 0.0);
         stats.put("failureRate", 0.0);
@@ -247,6 +277,14 @@ public class ApplicationOrchestratorService {
     public ApprovalPolicy savePolicy(ApprovalPolicy policy) {
         policy.setUpdatedAt(Instant.now());
         return policyRepository.save(policy);
+    }
+
+    private long countTodaySubmissions(UUID candidateId) {
+        Instant startOfDay = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
+        return applicationRepository.findAll().stream()
+                .filter(a -> a.getCandidateId().equals(candidateId))
+                .filter(a -> a.getSubmittedAt() != null && a.getSubmittedAt().isAfter(startOfDay))
+                .count();
     }
 
     private void recordHistory(ApplicationRecord application, WorkflowState fromState, WorkflowState toState, String reason) {

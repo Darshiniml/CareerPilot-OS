@@ -14,23 +14,29 @@ public class ApplicationWorkflowEngine {
     private final Map<WorkflowState, Set<WorkflowState>> transitions = new EnumMap<>(WorkflowState.class);
 
     public ApplicationWorkflowEngine() {
-        allow(WorkflowState.DISCOVERED, WorkflowState.MATCHED);
-        allow(WorkflowState.MATCHED, WorkflowState.ELIGIBLE, WorkflowState.REJECTED);
-        allow(WorkflowState.ELIGIBLE, WorkflowState.READY, WorkflowState.REJECTED);
-        allow(WorkflowState.READY, WorkflowState.WAITING_APPROVAL, WorkflowState.APPROVED);
-        allow(WorkflowState.WAITING_APPROVAL, WorkflowState.APPROVED, WorkflowState.REJECTED);
-        allow(WorkflowState.APPROVED, WorkflowState.SUBMITTING);
-        allow(WorkflowState.SUBMITTING, WorkflowState.SUBMITTED, WorkflowState.FAILED);
+        allow(WorkflowState.DISCOVERED, WorkflowState.MATCHED, WorkflowState.APPLICATION_PREPARING, WorkflowState.ALREADY_APPLIED);
+        allow(WorkflowState.MATCHED, WorkflowState.ELIGIBLE, WorkflowState.REJECTED, WorkflowState.APPLICATION_PREPARING);
+        allow(WorkflowState.ELIGIBLE, WorkflowState.APPLICATION_PREPARING, WorkflowState.APPLICATION_READY, WorkflowState.REJECTED);
+        allow(WorkflowState.APPLICATION_PREPARING, WorkflowState.APPLICATION_READY, WorkflowState.READY_FOR_APPROVAL, WorkflowState.MANUAL_ACTION_REQUIRED, WorkflowState.UNSUPPORTED_CONNECTOR, WorkflowState.ALREADY_APPLIED, WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT, WorkflowState.APPLICATION_FAILED);
+        allow(WorkflowState.APPLICATION_READY, WorkflowState.READY_FOR_APPROVAL, WorkflowState.APPROVED, WorkflowState.MANUAL_ACTION_REQUIRED, WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT);
+        allow(WorkflowState.READY_FOR_APPROVAL, WorkflowState.APPROVED, WorkflowState.REJECTED, WorkflowState.MANUAL_ACTION_REQUIRED);
+        allow(WorkflowState.APPROVED, WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMITTING, WorkflowState.MANUAL_ACTION_REQUIRED, WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT);
+        allow(WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMITTED, WorkflowState.SUBMITTED_VERIFIED, WorkflowState.SUBMISSION_UNVERIFIED, WorkflowState.SUBMISSION_FAILED, WorkflowState.APPLICATION_FAILED);
+        allow(WorkflowState.SUBMITTING, WorkflowState.SUBMITTED, WorkflowState.SUBMITTED_VERIFIED, WorkflowState.SUBMISSION_UNVERIFIED, WorkflowState.SUBMISSION_FAILED, WorkflowState.APPLICATION_FAILED, WorkflowState.FAILED);
+        allow(WorkflowState.SUBMITTED, WorkflowState.VERIFICATION_PENDING, WorkflowState.SUBMITTED_VERIFIED, WorkflowState.SUBMISSION_UNVERIFIED, WorkflowState.TRACKING, WorkflowState.COMPLETED);
+        allow(WorkflowState.VERIFICATION_PENDING, WorkflowState.SUBMITTED_VERIFIED, WorkflowState.SUBMISSION_UNVERIFIED, WorkflowState.SUBMISSION_FAILED);
+        allow(WorkflowState.SUBMITTED_VERIFIED, WorkflowState.TRACKING, WorkflowState.COMPLETED);
+        allow(WorkflowState.MANUAL_ACTION_REQUIRED, WorkflowState.APPROVED, WorkflowState.SUBMITTED, WorkflowState.SUBMITTED_VERIFIED, WorkflowState.ARCHIVED);
         allow(WorkflowState.FAILED, WorkflowState.RETRYING, WorkflowState.ARCHIVED);
-        allow(WorkflowState.RETRYING, WorkflowState.SUBMITTING, WorkflowState.FAILED);
-        allow(WorkflowState.SUBMITTED, WorkflowState.TRACKING, WorkflowState.COMPLETED, WorkflowState.WITHDRAWN);
-        allow(WorkflowState.TRACKING, WorkflowState.INTERVIEW, WorkflowState.OFFER, WorkflowState.REJECTED_BY_COMPANY, WorkflowState.WITHDRAWN, WorkflowState.COMPLETED);
-        allow(WorkflowState.INTERVIEW, WorkflowState.OFFER, WorkflowState.REJECTED_BY_COMPANY, WorkflowState.COMPLETED);
-        allow(WorkflowState.OFFER, WorkflowState.COMPLETED, WorkflowState.WITHDRAWN);
+        allow(WorkflowState.APPLICATION_FAILED, WorkflowState.RETRYING, WorkflowState.ARCHIVED);
+        allow(WorkflowState.SUBMISSION_FAILED, WorkflowState.RETRYING, WorkflowState.ARCHIVED);
+        allow(WorkflowState.RETRYING, WorkflowState.SUBMISSION_IN_PROGRESS, WorkflowState.SUBMITTING, WorkflowState.FAILED, WorkflowState.APPLICATION_FAILED);
+        allow(WorkflowState.TRACKING, WorkflowState.INTERVIEW, WorkflowState.OFFER, WorkflowState.REJECTED, WorkflowState.COMPLETED);
+        allow(WorkflowState.INTERVIEW, WorkflowState.OFFER, WorkflowState.REJECTED, WorkflowState.COMPLETED);
+        allow(WorkflowState.OFFER, WorkflowState.COMPLETED, WorkflowState.ARCHIVED);
         allow(WorkflowState.REJECTED, WorkflowState.ARCHIVED);
-        allow(WorkflowState.REJECTED_BY_COMPANY, WorkflowState.ARCHIVED);
-        allow(WorkflowState.WITHDRAWN, WorkflowState.ARCHIVED);
-        allow(WorkflowState.COMPLETED, WorkflowState.ARCHIVED);
+        allow(WorkflowState.ALREADY_APPLIED, WorkflowState.ARCHIVED);
+        allow(WorkflowState.APPLICATION_BLOCKED_BY_DAILY_LIMIT, WorkflowState.APPLICATION_PREPARING, WorkflowState.READY_FOR_APPROVAL, WorkflowState.APPROVED, WorkflowState.ARCHIVED);
     }
 
     private void allow(WorkflowState from, WorkflowState... to) {
@@ -38,6 +44,7 @@ public class ApplicationWorkflowEngine {
     }
 
     public boolean canTransition(WorkflowState from, WorkflowState to) {
+        if (from == to) return true;
         return transitions.getOrDefault(from, Set.of()).contains(to);
     }
 

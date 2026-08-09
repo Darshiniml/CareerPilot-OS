@@ -44,6 +44,7 @@ public class AiDocument {
     @Builder.Default
     private String language = "en";
     
+    @Column(columnDefinition = "text")
     private String content;
     
     @Convert(converter = com.careerpilot.backend.config.JsonMapConverter.class)

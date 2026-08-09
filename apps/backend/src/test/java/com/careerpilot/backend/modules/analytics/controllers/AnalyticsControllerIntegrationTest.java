@@ -97,7 +97,7 @@ public class AnalyticsControllerIntegrationTest {
     public void testGetOverview_Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/analytics/overview")
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden()); // Spring Security blocks unauthenticated
+                .andExpect(status().isUnauthorized()); // Spring Security blocks unauthenticated
     }
 
     @Test

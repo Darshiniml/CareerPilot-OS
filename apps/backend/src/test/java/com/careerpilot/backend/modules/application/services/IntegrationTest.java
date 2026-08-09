@@ -11,6 +11,7 @@ import com.careerpilot.backend.modules.application.repositories.RetryAttemptRepo
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,6 +28,9 @@ class IntegrationTest {
         PlatformNotificationRepository notificationRepository = Mockito.mock(PlatformNotificationRepository.class);
         ApprovalPolicyRepository policyRepository = Mockito.mock(ApprovalPolicyRepository.class);
 
+        ManualApplicationSubmissionConnector manualConnector = new ManualApplicationSubmissionConnector();
+        ApplicationSubmissionRegistry registry = new ApplicationSubmissionRegistry(List.of(manualConnector), manualConnector);
+
         UUID candidateId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         Mockito.when(repository.existsByCandidateIdAndJobId(candidateId, jobId)).thenReturn(false);
@@ -39,11 +43,13 @@ class IntegrationTest {
                 retryRepository,
                 notificationRepository,
                 policyRepository,
+                null,
                 new ApplicationWorkflowEngine(),
                 new EligibilityEngine(),
                 new ResumeSelectionEngine(),
                 new ApprovalPolicyEngine(),
                 new DefaultSubmissionAdapter(),
+                registry,
                 null
         );
 

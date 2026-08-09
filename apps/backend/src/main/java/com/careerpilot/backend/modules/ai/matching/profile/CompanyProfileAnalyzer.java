@@ -11,6 +11,9 @@ public class CompanyProfileAnalyzer {
 
     public CompanyProfile analyze(Map<String, Object> knowledge, Map<String, Object> metadata,
                                   Map<String, Object> insights) {
+        if (knowledge == null) knowledge = Collections.emptyMap();
+        if (metadata == null) metadata = Collections.emptyMap();
+        if (insights == null) insights = Collections.emptyMap();
         CompanyProfile.CompanyProfileBuilder builder = CompanyProfile.builder();
 
         UUID companyId = null;
