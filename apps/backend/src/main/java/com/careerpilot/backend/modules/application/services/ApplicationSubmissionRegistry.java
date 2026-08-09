@@ -1,12 +1,11 @@
 package com.careerpilot.backend.modules.application.services;
 
+import com.careerpilot.backend.modules.application.domain.ApplicationSubmissionCapability;
 import com.careerpilot.backend.modules.application.domain.ApplicationSubmissionMode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -16,8 +15,13 @@ public class ApplicationSubmissionRegistry {
     private final Map<String, ApplicationSubmissionConnector> registry = new ConcurrentHashMap<>();
     private final ManualApplicationSubmissionConnector manualFallback;
 
+    private static final List<String> KNOWN_SOURCES = List.of(
+            "greenhouse", "lever", "ashby", "company-career",
+            "remotive", "weworkremotely", "adzuna", "jooble", "wellfound", "indeed"
+    );
+
     public ApplicationSubmissionRegistry(List<ApplicationSubmissionConnector> connectors,
-                                         ManualApplicationSubmissionConnector manualFallback) {
+                                          ManualApplicationSubmissionConnector manualFallback) {
         this.manualFallback = manualFallback;
         if (connectors != null) {
             connectors.forEach(c -> {
@@ -37,6 +41,60 @@ public class ApplicationSubmissionRegistry {
 
     public ApplicationSubmissionMode getSubmissionMode(String connectorId) {
         return getConnector(connectorId).getSubmissionMode();
+    }
+
+    public ApplicationSubmissionCapability getSubmissionCapability(String connectorId) {
+        String key = (connectorId != null && !connectorId.isBlank()) ? connectorId.toLowerCase() : "manual-fallback";
+        ApplicationSubmissionConnector connector = registry.get(key);
+
+        if (connector != null) {
+            return ApplicationSubmissionCapability.builder()
+                    .source(connector.getConnectorId())
+                    .submissionMode(connector.getSubmissionMode())
+                    .enabled(true)
+                    .requiresCredentials(connector.getSubmissionMode() == ApplicationSubmissionMode.API_SUPPORTED || connector.getSubmissionMode() == ApplicationSubmissionMode.LICENSED_INTEGRATION)
+                    .supportsSubmission(connector.isSubmissionSupported())
+                    .supportsVerification(false)
+                    .supportsStatusTracking(false)
+                    .reason(connector.isSubmissionSupported() ? "Permitted submission API active" : "Discovery source does not expose a permitted application submission API")
+                    .configurationStatus("CONFIGURED")
+                    .healthStatus("HEALTHY")
+                    .build();
+        }
+
+        // Manual / Aggregator fallback capability
+        return ApplicationSubmissionCapability.builder()
+                .source(key)
+                .submissionMode(ApplicationSubmissionMode.MANUAL_REQUIRED)
+                .enabled(true)
+                .requiresCredentials(false)
+                .supportsSubmission(false)
+                .supportsVerification(false)
+                .supportsStatusTracking(false)
+                .reason("Aggregator provides job discovery; requires candidate manual action via official applyUrl")
+                .configurationStatus(KNOWN_SOURCES.contains(key) ? "CONFIGURED" : "NOT_CONFIGURED")
+                .healthStatus(KNOWN_SOURCES.contains(key) ? "HEALTHY" : "NOT_CONFIGURED")
+                .build();
+    }
+
+    public List<ApplicationSubmissionCapability> getSubmissionCapabilities() {
+        List<ApplicationSubmissionCapability> capabilities = new ArrayList<>();
+        Set<String> processed = new HashSet<>();
+
+        // Add registered connectors
+        for (ApplicationSubmissionConnector c : registry.values()) {
+            capabilities.add(getSubmissionCapability(c.getConnectorId()));
+            processed.add(c.getConnectorId().toLowerCase());
+        }
+
+        // Add known discovery connectors
+        for (String source : KNOWN_SOURCES) {
+            if (!processed.contains(source)) {
+                capabilities.add(getSubmissionCapability(source));
+            }
+        }
+
+        return capabilities;
     }
 
     public List<ApplicationSubmissionConnector> listConnectors() {

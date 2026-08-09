@@ -86,8 +86,21 @@ export const Agents: React.FC = () => {
     allowReferenceResearch: true,
     allowExternalConnectors: true
   });
+  const [submissionCapabilities, setSubmissionCapabilities] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [pollingActive, setPollingActive] = useState(false);
+
+  // Fetch Submission Capabilities
+  const fetchSubmissionCapabilities = async () => {
+    try {
+      const res = await api.get('/applications/submission-capabilities');
+      if (res.data && Array.isArray(res.data)) {
+        setSubmissionCapabilities(res.data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch submission capabilities:', e);
+    }
+  };
 
   // Fetch Policy
   const fetchPolicy = async () => {
@@ -195,6 +208,7 @@ export const Agents: React.FC = () => {
     fetchConnectors();
     fetchActiveWorkflow();
     fetchActiveExecutions();
+    fetchSubmissionCapabilities();
   }, []);
 
   // Poll for active executions and task updates
@@ -500,6 +514,51 @@ export const Agents: React.FC = () => {
                       />
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Submission Capabilities Table */}
+              <div className="mt-8 pt-6 border-t border-iron-gray/10 space-y-4">
+                <h4 className="text-caption font-semibold text-slate uppercase tracking-wider">Application Submission Capabilities</h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-iron-gray/10 text-slate uppercase font-semibold bg-mist-gray/40">
+                        <th className="p-2">Source</th>
+                        <th className="p-2">Submission Mode</th>
+                        <th className="p-2">Submission</th>
+                        <th className="p-2">Verification</th>
+                        <th className="p-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-iron-gray/10">
+                      {submissionCapabilities.map((cap: any) => (
+                        <tr key={cap.source} className="hover:bg-mist-gray/20">
+                          <td className="p-2 font-bold text-jet-black capitalize">{cap.source}</td>
+                          <td className="p-2">
+                            <span className="px-2 py-0.5 rounded bg-iron-gray/10 text-slate font-mono text-[10px]">
+                              {cap.submissionMode}
+                            </span>
+                          </td>
+                          <td className="p-2">
+                            {cap.supportsSubmission ? (
+                              <span className="text-emerald-700 font-semibold">✓ Supported</span>
+                            ) : (
+                              <span className="text-amber-700 font-semibold">⚠ Manual Only</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-slate">
+                            {cap.supportsVerification ? '✓ Verified' : '⚠ Unavailable'}
+                          </td>
+                          <td className="p-2">
+                            <span className={`font-semibold ${cap.healthStatus === 'HEALTHY' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {cap.healthStatus || 'HEALTHY'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </Card>
