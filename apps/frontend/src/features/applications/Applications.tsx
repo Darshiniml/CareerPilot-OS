@@ -33,6 +33,27 @@ export const Applications: React.FC = () => {
   const [activeDecision, setActiveDecision] = useState<any>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [statusAppId, setStatusAppId] = useState<string | null>(null);
+  const [targetState, setTargetState] = useState('INTERVIEW');
+  const [statusReason, setStatusReason] = useState('');
+
+  const handleUpdateCandidateStatus = async () => {
+    if (!statusAppId) return;
+    try {
+      await api.put(`/applications/${statusAppId}/status`, {
+        targetState,
+        reason: statusReason || `Manually reported ${targetState} by user`
+      });
+      alert(`Application status updated to ${targetState} (Manually reported by you).`);
+      setStatusModalOpen(false);
+      fetchApplicationsAndDetails();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update application status.');
+    }
+  };
+
   const handleOpenPackageModal = async (appId: string) => {
     try {
       const [decRes, pkgRes] = await Promise.all([
@@ -235,6 +256,13 @@ export const Applications: React.FC = () => {
                       <td className="p-4 pr-6 text-right">
                         <div className="flex justify-end items-center gap-2">
                           <button
+                            onClick={() => { setStatusAppId(app.applicationId); setStatusModalOpen(true); }}
+                            title="Report Manual Status Update"
+                            className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
+                          >
+                            Update Status
+                          </button>
+                          <button
                             onClick={() => handleOpenPackageModal(app.applicationId)}
                             title="Review Decision & Application Package"
                             className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
@@ -363,6 +391,61 @@ export const Applications: React.FC = () => {
               <div className="flex justify-end pt-4 border-t border-iron-gray/10">
                 <button onClick={() => setModalOpen(false)} className="px-4 py-2 bg-jet-black text-white text-xs font-semibold rounded hover:bg-charcoal transition-all">
                   Close Review Workspace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Candidate Manual Status Update Modal */}
+        {statusModalOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-iron-gray/20">
+              <div className="flex justify-between items-start border-b border-iron-gray/10 pb-4">
+                <div>
+                  <h3 className="text-subheading font-bold text-jet-black">Report Application Status Update</h3>
+                  <span className="text-caption text-slate">Manually reported by you</span>
+                </div>
+                <button onClick={() => setStatusModalOpen(false)} className="p-1 text-slate hover:text-jet-black">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-caption font-semibold text-slate block mb-1">New Status State</label>
+                  <select
+                    value={targetState}
+                    onChange={(e) => setTargetState(e.target.value)}
+                    className="w-full p-2.5 rounded-lg border border-iron-gray/20 text-body-sm font-semibold text-jet-black bg-mist-gray/30"
+                  >
+                    <option value="UNDER_REVIEW">UNDER_REVIEW (Recruiter reviewing profile)</option>
+                    <option value="ASSESSMENT">ASSESSMENT (Technical screening test)</option>
+                    <option value="INTERVIEW">INTERVIEW (Interview scheduled / in progress)</option>
+                    <option value="OFFER">OFFER (Job offer extended)</option>
+                    <option value="REJECTED">REJECTED (Application rejected by company)</option>
+                    <option value="WITHDRAWN">WITHDRAWN (Withdrawn by candidate)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-caption font-semibold text-slate block mb-1">Reason / Notes (Optional)</label>
+                  <textarea
+                    rows={3}
+                    value={statusReason}
+                    onChange={(e) => setStatusReason(e.target.value)}
+                    placeholder="e.g. Received interview invitation email from recruiter..."
+                    className="w-full p-2.5 rounded-lg border border-iron-gray/20 text-body-sm text-jet-black bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-iron-gray/10">
+                <button onClick={() => setStatusModalOpen(false)} className="px-4 py-2 bg-mist-gray text-jet-black text-xs font-semibold rounded hover:bg-iron-gray/20 transition-all">
+                  Cancel
+                </button>
+                <button onClick={handleUpdateCandidateStatus} className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded hover:bg-indigo-700 transition-all">
+                  Save Status Update
                 </button>
               </div>
             </div>

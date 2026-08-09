@@ -2,6 +2,8 @@ package com.careerpilot.backend.modules.application.adapters.in.web;
 
 import com.careerpilot.backend.modules.application.domain.*;
 import com.careerpilot.backend.modules.application.services.*;
+import com.careerpilot.backend.modules.auth.domain.User;
+import com.careerpilot.backend.modules.auth.domain.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -10,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,6 +28,8 @@ public class ApplicationController {
     private final SubmissionPreflightService preflightService;
     private final ApplicationDecisionService decisionService;
     private final ApplicationPackageService packageService;
+    private final ApplicationTrackingService trackingService;
+    private final UserRepository userRepository;
 
     @PostMapping("/create")
     @Operation(summary = "Create a new application record")
@@ -55,6 +60,30 @@ public class ApplicationController {
     @Operation(summary = "Retry submission for transient failures")
     public ResponseEntity<ApplicationRecord> retry(@PathVariable UUID id, @RequestBody ApprovalRequest request) {
         return ResponseEntity.ok(orchestratorService.retry(id, request.actorId(), request.ipAddress()));
+    }
+
+    @PutMapping("/{id}/status")
+    @Operation(summary = "Manual candidate status update (e.g. INTERVIEW, OFFER, REJECTED, WITHDRAWN)")
+    public ResponseEntity<ApplicationRecord> updateStatus(@PathVariable UUID id, @RequestBody StatusUpdateRequest request, Principal principal) {
+        UUID actorId = getUserId(principal);
+        WorkflowState targetState = WorkflowState.valueOf(request.targetState());
+        ApplicationRecord updated = trackingService.transitionState(id, targetState, actorId, "USER", request.reason());
+        return ResponseEntity.ok(updated);
+    }
+
+    @PostMapping("/{id}/verify")
+    @Operation(summary = "Submit empirical verification evidence")
+    public ResponseEntity<ApplicationVerificationResult> verify(@PathVariable UUID id, @RequestBody VerifyRequest request, Principal principal) {
+        UUID actorId = getUserId(principal);
+        ApplicationVerificationResult result = trackingService.verifyApplicationWithEvidence(id, request.evidenceType(), request.evidenceReference(), request.confirmationId(), actorId);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{id}/timeline")
+    @Operation(summary = "Get application state history timeline and duration")
+    public ResponseEntity<List<ApplicationTrackingService.ApplicationTimelineEvent>> getTimeline(@PathVariable UUID id, Principal principal) {
+        UUID actorId = getUserId(principal);
+        return ResponseEntity.ok(trackingService.getTimeline(id, actorId));
     }
 
     @GetMapping("/{id}/preflight")
@@ -123,9 +152,20 @@ public class ApplicationController {
         return ResponseEntity.ok(orchestratorService.savePolicy(policy));
     }
 
-    public record CreateApplicationRequest(UUID candidateId, UUID companyId, UUID jobId, String connectorId, Map<String, Object> metadata) {
+    private UUID getUserId(Principal principal) {
+        if (principal == null) {
+            return userRepository.findAll().stream().findFirst().map(User::getId).orElse(UUID.randomUUID());
+        }
+        return userRepository.findByEmail(principal.getName())
+                .map(User::getId)
+                .orElseGet(() -> userRepository.findAll().stream().findFirst().map(User::getId).orElse(UUID.randomUUID()));
     }
 
-    public record ApprovalRequest(UUID actorId, String reason, String ipAddress) {
-    }
+    public record CreateApplicationRequest(UUID candidateId, UUID companyId, UUID jobId, String connectorId, Map<String, Object> metadata) {}
+
+    public record ApprovalRequest(UUID actorId, String reason, String ipAddress) {}
+
+    public record StatusUpdateRequest(String targetState, String reason) {}
+
+    public record VerifyRequest(String evidenceType, String evidenceReference, String confirmationId) {}
 }

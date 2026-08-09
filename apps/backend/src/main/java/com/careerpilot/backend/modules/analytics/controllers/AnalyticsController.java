@@ -21,6 +21,7 @@ import java.util.*;
 public class AnalyticsController {
 
     private final CareerAnalyticsService analyticsService;
+    private final CareerExecutionAnalyticsService careerExecutionAnalyticsService;
     private final DataCollector dataCollector;
     private final SkillDemandAnalyzer skillDemandAnalyzer;
     private final ApplicationAnalyzer applicationAnalyzer;
@@ -217,6 +218,27 @@ public class AnalyticsController {
         response.put("readinessTrend", readinessTrend);
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/career-execution")
+    @Operation(summary = "Get career execution funnel metrics (Milestone 19)")
+    public ResponseEntity<CareerExecutionAnalyticsService.CareerExecutionMetrics> getCareerExecution(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(careerExecutionAnalyticsService.calculateCareerExecution(candidateId));
+    }
+
+    @GetMapping("/resume-performance")
+    @Operation(summary = "Get resume version performance (Milestone 19)")
+    public ResponseEntity<CareerExecutionAnalyticsService.ResumePerformanceReport> getResumePerformance(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(careerExecutionAnalyticsService.calculateResumePerformance(candidateId));
+    }
+
+    @GetMapping("/job-source-performance")
+    @Operation(summary = "Get job source performance (Milestone 19)")
+    public ResponseEntity<CareerExecutionAnalyticsService.SourcePerformanceReport> getSourcePerformance(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(careerExecutionAnalyticsService.calculateSourcePerformance(candidateId));
     }
 
     private UUID getUserId(Principal principal) {
