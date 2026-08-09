@@ -29,6 +29,24 @@ export const Applications: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<ApplicationDetails[]>([]);
   const [stats, setStats] = useState({ total: 0, submitted: 0, manual: 0, failed: 0 });
+  const [activePackage, setActivePackage] = useState<any>(null);
+  const [activeDecision, setActiveDecision] = useState<any>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const handleOpenPackageModal = async (appId: string) => {
+    try {
+      const [decRes, pkgRes] = await Promise.all([
+        api.get(`/applications/${appId}/decision`),
+        api.get(`/applications/${appId}/package`)
+      ]);
+      setActiveDecision(decRes.data);
+      setActivePackage(pkgRes.data);
+      setModalOpen(true);
+    } catch (e) {
+      console.error('Failed to load application package:', e);
+      alert('Could not load application decision package.');
+    }
+  };
 
   const fetchApplicationsAndDetails = async () => {
     try {
@@ -216,6 +234,13 @@ export const Applications: React.FC = () => {
                       {/* Actions */}
                       <td className="p-4 pr-6 text-right">
                         <div className="flex justify-end items-center gap-2">
+                          <button
+                            onClick={() => handleOpenPackageModal(app.applicationId)}
+                            title="Review Decision & Application Package"
+                            className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
+                          >
+                            Review Package
+                          </button>
                           {app.workflowState === 'MANUAL_ACTION_REQUIRED' && app.applyUrl && (
                             <a
                               href={app.applyUrl}
@@ -278,6 +303,71 @@ export const Applications: React.FC = () => {
             </Card>
           )}
         </section>
+
+        {/* Decision & Package Workspace Modal */}
+        {modalOpen && activeDecision && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-iron-gray/20 max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-start border-b border-iron-gray/10 pb-4">
+                <div>
+                  <h3 className="text-subheading font-bold text-jet-black">Application Decision & Package</h3>
+                  <span className="text-caption text-slate">Evaluated from real candidate profile, matching engine & company intelligence</span>
+                </div>
+                <button onClick={() => setModalOpen(false)} className="p-1 text-slate hover:text-jet-black">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Recommendation Badge & Rationale */}
+              <div className="p-4 rounded-lg bg-mist-gray/50 border border-iron-gray/15 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-caption uppercase font-semibold text-slate">Recommendation:</span>
+                  <span className={`px-2.5 py-0.5 rounded text-xs font-bold ${
+                    activeDecision.recommendation === 'RECOMMENDED_TO_APPLY' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
+                    activeDecision.recommendation === 'APPLY_WITH_CAUTION' ? 'bg-amber-500/10 text-amber-700 border border-amber-500/20' :
+                    'bg-red-500/10 text-red-700 border border-red-500/20'
+                  }`}>
+                    {activeDecision.recommendation}
+                  </span>
+                </div>
+                <p className="text-body-sm text-jet-black font-medium">{activeDecision.decisionRationale}</p>
+              </div>
+
+              {/* Selected Resume */}
+              <div className="space-y-2">
+                <h4 className="text-caption uppercase font-semibold text-slate">Selected Resume Version</h4>
+                <div className="p-3 bg-white rounded border border-iron-gray/20 flex justify-between items-center">
+                  <span className="text-body-sm font-bold text-jet-black">{activeDecision.recommendedResumeTitle || 'Default Resume'}</span>
+                  <span className="text-xs text-slate">Resume ID: {activeDecision.recommendedResumeId ? String(activeDecision.recommendedResumeId).substring(0, 8) + '...' : 'Primary'}</span>
+                </div>
+              </div>
+
+              {/* Official Apply URL */}
+              {activePackage?.officialApplyUrl && (
+                <div className="p-4 bg-indigo-50/50 rounded-lg border border-indigo-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-caption font-bold text-indigo-900 block">Official Application Link</span>
+                    <span className="text-xs text-indigo-700 truncate max-w-md block">{activePackage.officialApplyUrl}</span>
+                  </div>
+                  <a
+                    href={activePackage.officialApplyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded transition-all flex items-center gap-1"
+                  >
+                    Open Link <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-4 border-t border-iron-gray/10">
+                <button onClick={() => setModalOpen(false)} className="px-4 py-2 bg-jet-black text-white text-xs font-semibold rounded hover:bg-charcoal transition-all">
+                  Close Review Workspace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </AppShell>

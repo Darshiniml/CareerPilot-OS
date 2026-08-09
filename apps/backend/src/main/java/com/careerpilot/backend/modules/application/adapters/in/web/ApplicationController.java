@@ -10,7 +10,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,6 +23,8 @@ public class ApplicationController {
     private final ApplicationOrchestratorService orchestratorService;
     private final ApplicationSubmissionRegistry submissionRegistry;
     private final SubmissionPreflightService preflightService;
+    private final ApplicationDecisionService decisionService;
+    private final ApplicationPackageService packageService;
 
     @PostMapping("/create")
     @Operation(summary = "Create a new application record")
@@ -62,6 +63,28 @@ public class ApplicationController {
         ApplicationRecord record = orchestratorService.getApplication(id);
         SubmissionPreflightService.PreflightResult result = preflightService.evaluatePreflight(record, record.getCandidateId());
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{id}/decision")
+    @Operation(summary = "Get intelligent application decision recommendation")
+    public ResponseEntity<ApplicationDecision> getDecision(@PathVariable UUID id) {
+        ApplicationDecision decision = decisionService.getDecision(id)
+                .orElseGet(() -> decisionService.evaluateDecision(id));
+        return ResponseEntity.ok(decision);
+    }
+
+    @PostMapping("/{id}/decision/evaluate")
+    @Operation(summary = "Force recalculate application decision")
+    public ResponseEntity<ApplicationDecision> evaluateDecision(@PathVariable UUID id) {
+        return ResponseEntity.ok(decisionService.evaluateDecision(id));
+    }
+
+    @GetMapping("/{id}/package")
+    @Operation(summary = "Get comprehensive application package")
+    public ResponseEntity<ApplicationPackage> getPackage(@PathVariable UUID id) {
+        ApplicationPackage pkg = packageService.getPackage(id)
+                .orElseGet(() -> packageService.assemblePackage(id));
+        return ResponseEntity.ok(pkg);
     }
 
     @GetMapping("/submission-capabilities")
