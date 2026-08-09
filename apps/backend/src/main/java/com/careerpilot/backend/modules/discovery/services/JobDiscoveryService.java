@@ -5,6 +5,7 @@ import com.careerpilot.backend.modules.discovery.domain.*;
 import com.careerpilot.backend.modules.discovery.repositories.*;
 import com.careerpilot.backend.modules.discovery.events.DiscoveryEvents.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,13 @@ public class JobDiscoveryService {
         this.intelligence = f;
         this.json = g;
         this.metrics = h;
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        try {
+            executor.shutdownNow();
+        } catch (Exception ignored) {}
     }
 
     @Transactional

@@ -14,14 +14,14 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   return (
     <div className="w-full select-none">
       {showLabel && (
-        <div className="flex justify-between text-caption font-semibold text-jet-black mb-1.5">
+        <div className="flex justify-between text-xs font-semibold text-slate-300 mb-1.5">
           <span>Progress</span>
           <span>{percentage}%</span>
         </div>
       )}
-      <div className="w-full bg-mist-gray h-2.5 rounded-full overflow-hidden border border-iron-gray/10">
+      <div className="w-full bg-slate-800/80 h-2.5 rounded-full overflow-hidden border border-white/5">
         <div
-          className="bg-jet-black h-full transition-all duration-500 ease-out"
+          className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 h-full transition-all duration-500 ease-out shadow-sm shadow-indigo-500/50"
           style={{ width: `${percentage}%` }}
         />
       </div>

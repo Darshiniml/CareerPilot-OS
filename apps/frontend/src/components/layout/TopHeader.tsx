@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { Bell, ChevronDown } from 'lucide-react';
+import { Bell, Sparkles } from 'lucide-react';
 
 interface TopHeaderProps {
   title: string;
@@ -18,32 +18,39 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ title, description }) => {
   return (
     <header className="top-header">
       <div>
-        <h1 className="text-subheading font-bold text-jet-black tracking-tight">{title}</h1>
-        {description && <p className="text-caption text-slate mt-0.5">{description}</p>}
+        <h1 className="text-lg font-bold text-white tracking-tight font-heading flex items-center gap-2">
+          {title}
+        </h1>
+        {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
+        {/* Quick System Badge */}
+        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium">
+          <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+          <span>AI Engine Active</span>
+        </div>
+
         {/* Notifications Icon */}
-        <button className="text-charcoal hover:text-jet-black p-1.5 rounded-full hover:bg-mist-gray transition-all relative">
+        <button className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800/40 hover:bg-slate-800 border border-white/5 transition-all relative">
           <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-jet-black rounded-full" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-indigo-400 rounded-full ring-2 ring-slate-900" />
         </button>
 
         {/* User Badge */}
         {user && (
-          <div className="flex items-center gap-3 pl-4 border-l border-iron-gray/15 select-none">
-            <div className="w-8 h-8 rounded-full bg-mist-gray flex items-center justify-center text-caption font-bold text-jet-black border border-iron-gray/10">
+          <div className="flex items-center gap-3 pl-3 border-l border-white/10 select-none">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-md shadow-indigo-500/20 border border-white/20">
               {getInitials()}
             </div>
             <div className="text-left hidden sm:block">
-              <p className="text-body-sm font-medium text-jet-black leading-none">
+              <p className="text-xs font-bold text-slate-200 leading-tight">
                 {user.firstName} {user.lastName}
               </p>
-              <p className="text-caption text-slate mt-1 leading-none">
+              <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
                 {user.email}
               </p>
             </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate hidden sm:block" />
           </div>
         )}
       </div>

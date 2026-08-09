@@ -4,14 +4,17 @@ import com.careerpilot.backend.config.JwtTokenProvider;
 import com.careerpilot.backend.modules.auth.domain.*;
 import com.careerpilot.backend.modules.auth.providers.EmailPasswordProvider;
 import com.careerpilot.shared.dto.auth.*;
+import com.careerpilot.shared.events.UserLoggedInEvent;
 import com.careerpilot.sdk.auth.EmailPasswordAuthRequest;
 import com.careerpilot.sdk.auth.AuthResponse;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,6 +30,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AuthService(
             UserRepository userRepository,
@@ -35,7 +39,8 @@ public class AuthService {
             EmailPasswordProvider emailPasswordProvider,
             JwtTokenProvider jwtTokenProvider,
             UserDetailsService userDetailsService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userPreferenceRepository = userPreferenceRepository;
@@ -43,6 +48,7 @@ public class AuthService {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -107,6 +113,16 @@ public class AuthService {
                 .lastName(authResponse.getLastName())
                 .roles(authResponse.getRoles())
                 .build();
+
+        // Publish UserLoggedInEvent to trigger asynchronous background job discovery
+        try {
+            eventPublisher.publishEvent(UserLoggedInEvent.builder()
+                    .eventId(UUID.randomUUID())
+                    .timestamp(Instant.now())
+                    .userId(authResponse.getUserId())
+                    .email(authResponse.getEmail())
+                    .build());
+        } catch (Exception ignored) {}
 
         return LoginResponse.builder()
                 .accessToken(accessToken)

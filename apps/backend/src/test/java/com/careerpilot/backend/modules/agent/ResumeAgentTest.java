@@ -28,12 +28,13 @@ public class ResumeAgentTest {
 
         UUID userId = UUID.randomUUID();
         when(resumeRepository.findDefaultByUserId(userId)).thenReturn(Optional.empty());
+        when(resumeRepository.findActiveByUserId(userId)).thenReturn(Collections.emptyList());
         
         AgentContext context = AgentContext.builder().userId(userId).build();
         AgentTask task = AgentTask.builder().build();
 
         AgentResult result = agent.execute(context, task);
-        assertEquals(AgentResult.Status.FAILED, result.getStatus());
-        assertTrue(result.getMessage().contains("No active resume found"));
+        assertEquals(AgentResult.Status.BLOCKED, result.getStatus());
+        assertTrue(result.getMessage().contains("Resume required"));
     }
 }

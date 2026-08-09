@@ -35,7 +35,13 @@ public class JsonMapConverter implements AttributeConverter<Map<String, Object>,
             return new HashMap<>();
         }
         try {
-            return mapper.readValue(dbData, new TypeReference<Map<String, Object>>() {});
+            String str = dbData.trim();
+            if (str.startsWith("\"") && str.endsWith("\"")) {
+                try {
+                    str = mapper.readValue(str, String.class);
+                } catch (Exception ignored) {}
+            }
+            return mapper.readValue(str, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             log.error("Error converting JSON string to map: {}", dbData, e);
             return new HashMap<>();

@@ -17,13 +17,13 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-jet-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-paper-white border border-iron-gray/20 rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-iron-gray/10">
-          <h3 className="text-subheading font-bold text-jet-black tracking-tight">{title}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md transition-all animate-in fade-in duration-200">
+      <div className="w-full max-w-lg bg-slate-900 border border-white/15 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-800/40">
+          <h3 className="text-base font-bold text-white tracking-tight font-heading">{title}</h3>
           <button
             onClick={onClose}
-            className="text-slate hover:text-jet-black p-1 rounded-full hover:bg-mist-gray transition-all"
+            className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition-all"
           >
             <X className="w-4 h-4" />
           </button>

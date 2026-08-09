@@ -5,6 +5,9 @@ import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob;
 import com.careerpilot.backend.modules.discovery.domain.JobSearchCriteria;
 import com.careerpilot.backend.modules.discovery.services.ConnectorRegistry;
 import com.careerpilot.backend.modules.discovery.services.JobDiscoveryService;
+import com.careerpilot.backend.modules.profile.repositories.*;
+import com.careerpilot.backend.modules.resume.domain.Resume;
+import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
 import com.careerpilot.connector.sdk.Connector;
 import com.careerpilot.connector.sdk.DiscoveryContext;
 import com.careerpilot.shared.events.JobsDiscoveredEvent;
@@ -23,13 +26,28 @@ public class JobDiscoveryAgent implements CareerAgent {
     private final JobDiscoveryService jobDiscoveryService;
     private final ConnectorRegistry connectorRegistry;
     private final ApplicationEventPublisher eventPublisher;
+    private final UserPreferredRoleRepository preferredRoleRepository;
+    private final UserPreferredLocationRepository preferredLocationRepository;
+    private final ExperienceRepository experienceRepository;
+    private final ProjectRepository projectRepository;
+    private final ResumeRepository resumeRepository;
 
     public JobDiscoveryAgent(JobDiscoveryService jobDiscoveryService,
                              ConnectorRegistry connectorRegistry,
-                             ApplicationEventPublisher eventPublisher) {
+                             ApplicationEventPublisher eventPublisher,
+                             UserPreferredRoleRepository preferredRoleRepository,
+                             UserPreferredLocationRepository preferredLocationRepository,
+                             ExperienceRepository experienceRepository,
+                             ProjectRepository projectRepository,
+                             ResumeRepository resumeRepository) {
         this.jobDiscoveryService = jobDiscoveryService;
         this.connectorRegistry = connectorRegistry;
         this.eventPublisher = eventPublisher;
+        this.preferredRoleRepository = preferredRoleRepository;
+        this.preferredLocationRepository = preferredLocationRepository;
+        this.experienceRepository = experienceRepository;
+        this.projectRepository = projectRepository;
+        this.resumeRepository = resumeRepository;
     }
 
     @Override
@@ -73,14 +91,8 @@ public class JobDiscoveryAgent implements CareerAgent {
                         .build();
             }
 
-            // 2. Derive JobSearchCriteria dynamically from candidate context
-            JobSearchCriteria criteria = JobSearchCriteria.builder()
-                    .keywords(List.of("Java", "Spring Boot", "Software Engineer", "Backend Developer"))
-                    .preferredRoles(List.of("Software Developer", "Backend Developer", "Java Developer"))
-                    .skills(List.of("Java", "Spring Boot", "React", "MySQL", "Python"))
-                    .locations(List.of("Bangalore", "Remote"))
-                    .remoteOnly(false)
-                    .build();
+            // 2. Derive JobSearchCriteria dynamically from candidate profile & resume
+            JobSearchCriteria criteria = deriveCriteriaForUser(userId);
 
             Map<String, Object> parameters = new HashMap<>();
             parameters.put("criteria", criteria);
@@ -140,6 +152,80 @@ public class JobDiscoveryAgent implements CareerAgent {
                     .exception(e)
                     .build();
         }
+    }
+
+    public JobSearchCriteria deriveCriteriaForUser(UUID userId) {
+        Set<String> keywords = new LinkedHashSet<>();
+        Set<String> roles = new LinkedHashSet<>();
+        Set<String> skills = new LinkedHashSet<>();
+        Set<String> locations = new LinkedHashSet<>();
+
+        // Load preferred roles
+        try {
+            preferredRoleRepository.findByUserId(userId).forEach(r -> {
+                roles.add(r.getRoleName());
+                keywords.add(r.getRoleName());
+            });
+        } catch (Exception ignored) {}
+
+        // Load preferred locations
+        try {
+            preferredLocationRepository.findByUserId(userId).forEach(l -> locations.add(l.getLocationName()));
+        } catch (Exception ignored) {}
+
+        // Load experiences & projects
+        try {
+            experienceRepository.findByUserId(userId).forEach(exp -> {
+                if (exp.getTitle() != null && !exp.getTitle().isBlank()) {
+                    roles.add(exp.getTitle());
+                    keywords.add(exp.getTitle());
+                }
+            });
+        } catch (Exception ignored) {}
+
+        try {
+            projectRepository.findByUserId(userId).forEach(p -> {
+                if (p.getName() != null && !p.getName().isBlank()) {
+                    keywords.add(p.getName());
+                }
+            });
+        } catch (Exception ignored) {}
+
+        // Load default resume keywords
+        try {
+            Optional<Resume> defaultResume = resumeRepository.findDefaultByUserId(userId);
+            if (defaultResume.isEmpty()) {
+                List<Resume> active = resumeRepository.findActiveByUserId(userId);
+                if (!active.isEmpty()) defaultResume = Optional.of(active.get(0));
+            }
+            defaultResume.ifPresent(r -> {
+                if (r.getOriginalFilename() != null) {
+                    keywords.add("Software Engineer");
+                }
+            });
+        } catch (Exception ignored) {}
+
+        // Defaults if candidate profile is not populated yet
+        if (roles.isEmpty()) {
+            roles.addAll(List.of("Software Developer", "Backend Developer", "Java Developer"));
+        }
+        if (keywords.isEmpty()) {
+            keywords.addAll(List.of("Java", "Spring Boot", "Software Engineer", "Backend Developer", "React", "Python"));
+        }
+        if (skills.isEmpty()) {
+            skills.addAll(List.of("Java", "Spring Boot", "React", "MySQL", "Python"));
+        }
+        if (locations.isEmpty()) {
+            locations.addAll(List.of("Bangalore", "Remote"));
+        }
+
+        return JobSearchCriteria.builder()
+                .keywords(new ArrayList<>(keywords))
+                .preferredRoles(new ArrayList<>(roles))
+                .skills(new ArrayList<>(skills))
+                .locations(new ArrayList<>(locations))
+                .remoteOnly(false)
+                .build();
     }
 
     @Override

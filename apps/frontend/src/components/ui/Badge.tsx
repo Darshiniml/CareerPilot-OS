@@ -10,15 +10,15 @@ export const Badge: React.FC<BadgeProps> = ({
   variant = 'neutral',
 }) => {
   const styles = {
-    neutral: 'bg-mist-gray text-slate border border-iron-gray/10',
-    active: 'bg-faded-teal/20 text-jet-black border border-faded-teal/40',
-    success: 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20',
-    warning: 'bg-amber-500/10 text-amber-700 border border-amber-500/20',
-    danger: 'bg-red-500/10 text-red-700 border border-red-500/20',
+    neutral: 'bg-slate-800/80 text-slate-300 border border-slate-700/60',
+    active: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm shadow-indigo-500/20',
+    success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20',
+    warning: 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/20',
+    danger: 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/20',
   };
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-caption font-medium select-none ${styles[variant]}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold select-none backdrop-blur-sm ${styles[variant]}`}>
       {children}
     </span>
   );
