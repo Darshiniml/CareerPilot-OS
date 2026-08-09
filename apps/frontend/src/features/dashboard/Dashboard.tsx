@@ -6,6 +6,8 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { CareerSearchProfileBanner } from '../../components/ui/CareerSearchProfileBanner';
+import { useUserContextStore } from '../../store/userContextStore';
 import { api } from '../../services/api';
 import { FileText, Briefcase, Award, Send, ArrowRight } from 'lucide-react';
 
@@ -32,6 +34,9 @@ interface RecommendedJob {
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const fetchUserContext = useUserContextStore((state) => state.fetchUserContext);
+  const profile = useUserContextStore((state) => state.profile);
+
   const [loading, setLoading] = useState(true);
   const [kpis, setKpis] = useState({
     resumes: 0,
@@ -43,10 +48,12 @@ export const Dashboard: React.FC = () => {
   const [jobs, setJobs] = useState<RecommendedJob[]>([]);
 
   useEffect(() => {
+    fetchUserContext();
+
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        // Fetch resumes
+        // Fetch resumes count
         let resumesCount = 0;
         try {
           const resumesRes = await api.get('/resumes');
@@ -55,7 +62,7 @@ export const Dashboard: React.FC = () => {
           console.warn('Resumes endpoint error:', e);
         }
 
-        // Fetch applications
+        // Fetch applications count
         let appsCount = 0;
         try {
           const appsRes = await api.get('/applications');
@@ -73,32 +80,31 @@ export const Dashboard: React.FC = () => {
           console.warn('Analytics overview not ready yet');
         }
 
-        // Fetch job list (limit to 3 for recommendations)
+        // Fetch discovered jobs
         let discoveredJobsCount = 0;
         let recommendedJobs: RecommendedJob[] = [];
         try {
-          const jobsRes = await api.post('/ai/job/search', { limit: 10 });
+          const jobsRes = await api.post('/ai/job/search', { size: 10 });
           const jobsList = jobsRes.data?.content || jobsRes.data || [];
           discoveredJobsCount = jobsList.length;
-          
-          // Map to recommended jobs structure
+
           recommendedJobs = jobsList.slice(0, 3).map((j: any) => {
-            const parsedKnowledge = typeof j.structuredKnowledge === 'string' 
-              ? JSON.parse(j.structuredKnowledge) 
+            const parsedKnowledge = typeof j.structuredKnowledge === 'string'
+              ? JSON.parse(j.structuredKnowledge)
               : j.structuredKnowledge;
-            const skillsList = parsedKnowledge?.skills?.map((s: any) => s.skill) || [];
+            const skillsList = parsedKnowledge?.skills?.map((s: any) => s.skill) || (j.skills || []);
             return {
               jobId: j.jobId || j.id,
               title: j.title || 'Software Engineer',
-              companyName: j.companyName || j.company || 'Technology Corp',
+              companyName: j.companyName || j.company || 'Technology Partner',
               location: j.location || 'Remote',
-              remotePolicy: j.remotePolicy || 'Remote',
+              remotePolicy: j.remotePolicy || 'REMOTE',
               matchScore: Math.round((j.matchScore || 0.85) * 100),
-              skills: skillsList.slice(0, 4),
+              skills: skillsList.length > 0 ? skillsList.slice(0, 4) : ['Java', 'Spring Boot', 'SQL'],
             };
           });
         } catch (e) {
-          console.warn('Jobs list not ready');
+          console.warn('Jobs list query error:', e);
         }
 
         setKpis({
@@ -121,7 +127,7 @@ export const Dashboard: React.FC = () => {
                 skillAlignment: Math.round((data.categoryScores?.skillAlignment || 0) * 100),
                 interviewReadiness: Math.round((data.categoryScores?.interviewReadiness || 0) * 100),
                 applicationActivity: Math.round((data.categoryScores?.applicationActivity || 0) * 100),
-              }
+              },
             });
           } else {
             setHealth(null);
@@ -143,23 +149,24 @@ export const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <AppShell title="Dashboard" description="Your career cockpit at a glance.">
-        <LoadingState />
+      <AppShell title="Career Command Center" description="Your personal career cockpit at a glance.">
+        <LoadingState label="Loading profile context, career health metrics, and job recommendations..." />
       </AppShell>
     );
   }
 
   return (
-    <AppShell title="Dashboard" description="Your career cockpit at a glance.">
-      <div className="space-y-12">
+    <AppShell title="Career Command Center" description="Your personal career cockpit at a glance.">
+      <div className="space-y-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+        
         {/* Welcome Section */}
         <section className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-iron-gray/10">
           <div className="space-y-1">
-            <h2 className="text-heading font-normal text-jet-black tracking-tight leading-none">
-              Welcome back.
+            <h2 className="text-heading font-bold text-jet-black tracking-tight leading-none">
+              Welcome back{profile?.firstName ? `, ${profile.firstName}` : ''}.
             </h2>
             <p className="text-body text-slate max-w-2xl">
-              Your career cockpit is ready. Review your progress, discover relevant opportunities, and prepare for your next move.
+              Your career cockpit is fully synchronized with live job intelligence and autonomous agent engines.
             </p>
           </div>
           <div className="flex gap-3">
@@ -172,6 +179,9 @@ export const Dashboard: React.FC = () => {
           </div>
         </section>
 
+        {/* Career Search Profile Banner */}
+        <CareerSearchProfileBanner />
+
         {/* Career Overview KPI Cards */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
@@ -180,7 +190,7 @@ export const Dashboard: React.FC = () => {
               <FileText className="w-4 h-4 text-iron-gray" />
             </div>
             <p className="text-heading font-normal text-jet-black mt-2">{kpis.resumes}</p>
-            <p className="text-caption text-ash-gray mt-1">Manage multiple CV versions</p>
+            <p className="text-caption text-ash-gray mt-1">Manage CV versions</p>
           </Card>
 
           <Card>
@@ -213,17 +223,16 @@ export const Dashboard: React.FC = () => {
           </Card>
         </section>
 
-        {/* Career Health & Quick Actions split */}
+        {/* Career Health & Quick Operations */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Career Health */}
           <div className="lg:col-span-2 space-y-4">
-            <h3 className="text-heading-sm font-normal text-jet-black tracking-tight">Career Health</h3>
+            <h3 className="text-heading-sm font-bold text-jet-black tracking-tight">Career Health Index</h3>
             <Card variant="white">
               {!health ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <p className="text-body-sm font-bold text-jet-black">Not enough data yet</p>
+                  <p className="text-body-sm font-bold text-jet-black">Upload a default resume to calculate health index</p>
                   <p className="text-caption text-slate mt-1 max-w-sm">
-                    Upload your default resume to generate your Profile Completeness, Skill Alignment, and overall Career Health Index.
+                    AI analysis will compute Profile Completeness, Skill Alignment, and ATS Readiness.
                   </p>
                 </div>
               ) : (
@@ -264,38 +273,21 @@ export const Dashboard: React.FC = () => {
                         <span className="text-caption font-semibold w-8 text-right">{health.categoryScores.skillAlignment}%</span>
                       </div>
                     </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-body-sm text-charcoal">Interview Readiness</span>
-                      <div className="flex items-center gap-3 w-40">
-                        <ProgressBar value={health.categoryScores.interviewReadiness} />
-                        <span className="text-caption font-semibold w-8 text-right">{health.categoryScores.interviewReadiness}%</span>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-body-sm text-charcoal">Application Activity</span>
-                      <div className="flex items-center gap-3 w-40">
-                        <ProgressBar value={health.categoryScores.applicationActivity} />
-                        <span className="text-caption font-semibold w-8 text-right">{health.categoryScores.applicationActivity}%</span>
-                      </div>
-                    </div>
                   </div>
                 </>
               )}
             </Card>
           </div>
 
-          {/* Quick Operations */}
           <div className="space-y-4">
-            <h3 className="text-heading-sm font-normal text-jet-black tracking-tight">Quick Operations</h3>
+            <h3 className="text-heading-sm font-bold text-jet-black tracking-tight">Quick Operations</h3>
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => navigate('/resumes')}
-                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-lg border border-iron-gray/15 text-left transition-all"
+                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-xl border border-iron-gray/15 text-left transition-all"
               >
                 <div>
-                  <p className="text-body-sm font-medium text-jet-black">Optimize Resume</p>
+                  <p className="text-body-sm font-bold text-jet-black">Optimize Resume</p>
                   <p className="text-caption text-slate">Analyze ATS score & match quality</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate" />
@@ -303,33 +295,22 @@ export const Dashboard: React.FC = () => {
 
               <button
                 onClick={() => navigate('/matching')}
-                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-lg border border-iron-gray/15 text-left transition-all"
+                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-xl border border-iron-gray/15 text-left transition-all"
               >
                 <div>
-                  <p className="text-body-sm font-medium text-jet-black">Calculate Skill Gaps</p>
+                  <p className="text-body-sm font-bold text-jet-black">Calculate Skill Gaps</p>
                   <p className="text-caption text-slate">Audit tech stack against market demand</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate" />
               </button>
 
               <button
-                onClick={() => navigate('/interviews')}
-                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-lg border border-iron-gray/15 text-left transition-all"
+                onClick={() => navigate('/agents')}
+                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-xl border border-iron-gray/15 text-left transition-all"
               >
                 <div>
-                  <p className="text-body-sm font-medium text-jet-black">Practice Mock Interview</p>
-                  <p className="text-caption text-slate">Evaluate AI technical readiness</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate" />
-              </button>
-
-              <button
-                onClick={() => navigate('/copilot')}
-                className="w-full flex justify-between items-center p-4 bg-mist-gray hover:bg-iron-gray/10 rounded-lg border border-iron-gray/15 text-left transition-all"
-              >
-                <div>
-                  <p className="text-body-sm font-medium text-jet-black">Ask Career Copilot</p>
-                  <p className="text-caption text-slate">Review evidence-based insights</p>
+                  <p className="text-body-sm font-bold text-jet-black">Automation Agents</p>
+                  <p className="text-caption text-slate">Orchestrate job discovery & matching</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate" />
               </button>
@@ -340,9 +321,9 @@ export const Dashboard: React.FC = () => {
         {/* Recommended Opportunities */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-heading-sm font-normal text-jet-black tracking-tight">Recommended Opportunities</h3>
+            <h3 className="text-heading-sm font-bold text-jet-black tracking-tight">Top Matched Opportunities</h3>
             <Button variant="outline" onClick={() => navigate('/jobs')}>
-              All Jobs
+              All Discovered Jobs
             </Button>
           </div>
 
@@ -393,13 +374,14 @@ export const Dashboard: React.FC = () => {
                     className="w-full mt-6"
                     onClick={() => navigate(`/jobs?id=${job.jobId}`)}
                   >
-                    View Details
+                    View Opportunity Details
                   </Button>
                 </Card>
               ))}
             </div>
           )}
         </section>
+
       </div>
     </AppShell>
   );

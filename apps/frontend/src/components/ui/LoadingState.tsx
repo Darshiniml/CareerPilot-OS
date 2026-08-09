@@ -1,8 +1,17 @@
 import React from 'react';
 
-export const LoadingState: React.FC = () => {
+interface LoadingStateProps {
+  label?: string;
+}
+
+export const LoadingState: React.FC<LoadingStateProps> = ({ label }) => {
   return (
     <div className="w-full space-y-4 py-8 animate-pulse select-none">
+      {label && (
+        <p className="text-caption font-semibold text-indigo-400 tracking-wide uppercase">
+          {label}
+        </p>
+      )}
       <div className="h-6 bg-slate-800/80 rounded-lg w-1/4" />
       <div className="space-y-2">
         <div className="h-4 bg-slate-800/60 rounded-lg w-full" />

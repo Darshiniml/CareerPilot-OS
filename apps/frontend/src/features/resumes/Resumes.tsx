@@ -6,6 +6,7 @@ import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { api } from '../../services/api';
+import { useUserContextStore } from '../../store/userContextStore';
 import { FileText, Download, Check, Trash, Sparkles, AlertCircle, FileUp } from 'lucide-react';
 
 interface Resume {
@@ -184,6 +185,7 @@ export const Resumes: React.FC = () => {
       setNotification({ type: 'success', message: 'Resume uploaded successfully! AI analysis is processing...' });
       
       await fetchResumes();
+      useUserContextStore.getState().fetchUserContext();
       setUploadStatus('COMPLETED');
       setTimeout(() => setUploadStatus('IDLE'), 5000);
     } catch (err: any) {

@@ -1,16 +1,21 @@
 import React from 'react';
 import { Inbox } from 'lucide-react';
+import { Button } from './Button';
 
 interface EmptyStateProps {
   title: string;
   description: string;
   action?: React.ReactNode;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   title,
   description,
   action,
+  actionLabel,
+  onAction,
 }) => {
   return (
     <div className="flex flex-col items-center justify-center text-center p-12 bg-slate-900/60 backdrop-blur-md rounded-2xl border border-white/10 select-none">
@@ -19,7 +24,13 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       </div>
       <h4 className="text-base font-bold text-slate-100 tracking-tight font-heading">{title}</h4>
       <p className="text-sm text-slate-400 mt-1 max-w-sm">{description}</p>
-      {action && <div className="mt-6">{action}</div>}
+      {action ? (
+        <div className="mt-6">{action}</div>
+      ) : actionLabel && onAction ? (
+        <div className="mt-6">
+          <Button onClick={onAction}>{actionLabel}</Button>
+        </div>
+      ) : null}
     </div>
   );
 };

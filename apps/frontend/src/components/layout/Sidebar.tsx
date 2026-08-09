@@ -15,10 +15,16 @@ import {
   Settings,
   Cpu,
   LogOut,
-  Plane
+  Plane,
+  X
 } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) => {
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
   const menuItems = [
@@ -37,9 +43,13 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="sidebar">
+    <aside
+      className={`sidebar fixed lg:sticky top-0 bottom-0 left-0 z-50 transition-transform duration-300 ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}
+    >
       {/* Brand logo */}
-      <div className="h-16 flex items-center px-6 border-b border-white/10">
+      <div className="h-16 flex items-center justify-between px-6 border-b border-white/10">
         <div className="flex items-center gap-3 select-none">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
             <Plane className="w-5 h-5 text-white transform -rotate-45" />
@@ -50,6 +60,16 @@ export const Sidebar: React.FC = () => {
             </span>
           </div>
         </div>
+
+        {/* Mobile close button */}
+        {onCloseMobile && (
+          <button
+            onClick={onCloseMobile}
+            className="lg:hidden text-slate-400 hover:text-white p-1 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Nav List */}
@@ -58,6 +78,7 @@ export const Sidebar: React.FC = () => {
           <NavLink
             key={item.name}
             to={item.path}
+            onClick={onCloseMobile}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 select-none group ${
                 isActive

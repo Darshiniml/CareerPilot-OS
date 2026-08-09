@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { api } from '../../services/api';
+import { useUserContextStore } from '../../store/userContextStore';
 import { Plus, Trash, Globe, Linkedin, Github } from 'lucide-react';
 
 interface ProfileData {
@@ -147,6 +148,7 @@ export const Profile: React.FC = () => {
         phone: profile.phone,
         location: profile.location,
       });
+      useUserContextStore.getState().fetchUserContext();
       alert('Personal information updated!');
     } catch (e) {
       console.error(e);
@@ -166,6 +168,7 @@ export const Profile: React.FC = () => {
         remotePreference: profile.remotePreference,
         minSalary: profile.minSalary,
       });
+      useUserContextStore.getState().fetchUserContext();
       alert('Career preferences updated!');
     } catch (e) {
       console.error(e);
@@ -183,6 +186,7 @@ export const Profile: React.FC = () => {
         githubUrl: profile.githubUrl,
         portfolioUrl: profile.portfolioUrl,
       });
+      useUserContextStore.getState().fetchUserContext();
       alert('Social links updated!');
     } catch (e) {
       console.error(e);
