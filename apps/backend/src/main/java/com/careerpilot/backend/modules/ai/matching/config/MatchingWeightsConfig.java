@@ -27,6 +27,7 @@ public class MatchingWeightsConfig {
         DEFAULT_WEIGHTS.put("employmentTypeMatch", 0.05);
         DEFAULT_WEIGHTS.put("careerGrowthMatch", 0.05);
         DEFAULT_WEIGHTS.put("learningOpportunityMatch", 0.05);
+        DEFAULT_WEIGHTS.put("historicalSuccess", 0.0);
     }
 
     private Map<String, Double> customWeights = new HashMap<>();
@@ -48,6 +49,7 @@ public class MatchingWeightsConfig {
                 .employmentTypeMatch(getWeight("employmentTypeMatch"))
                 .careerGrowthMatch(getWeight("careerGrowthMatch"))
                 .learningOpportunityMatch(getWeight("learningOpportunityMatch"))
+                .historicalSuccess(getWeight("historicalSuccess"))
                 .build();
     }
 
@@ -68,6 +70,7 @@ public class MatchingWeightsConfig {
             if (weights.getEmploymentTypeMatch() != null) customWeights.put("employmentTypeMatch", weights.getEmploymentTypeMatch());
             if (weights.getCareerGrowthMatch() != null) customWeights.put("careerGrowthMatch", weights.getCareerGrowthMatch());
             if (weights.getLearningOpportunityMatch() != null) customWeights.put("learningOpportunityMatch", weights.getLearningOpportunityMatch());
+            if (weights.getHistoricalSuccess() != null) customWeights.put("historicalSuccess", weights.getHistoricalSuccess());
         }
     }
 
@@ -102,6 +105,7 @@ public class MatchingWeightsConfig {
         if (weights.getEmploymentTypeMatch() != null) total += weights.getEmploymentTypeMatch();
         if (weights.getCareerGrowthMatch() != null) total += weights.getCareerGrowthMatch();
         if (weights.getLearningOpportunityMatch() != null) total += weights.getLearningOpportunityMatch();
+        if (weights.getHistoricalSuccess() != null) total += weights.getHistoricalSuccess();
 
         if (total > 0 && Math.abs(total - 1.0) > 0.1) {
             throw new IllegalArgumentException("Weights must sum to approximately 1.0. Current sum: " + total);

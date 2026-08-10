@@ -22,6 +22,9 @@ public class AnalyticsController {
 
     private final CareerAnalyticsService analyticsService;
     private final CareerExecutionAnalyticsService careerExecutionAnalyticsService;
+    private final AdaptiveCareerIntelligenceService adaptiveCareerIntelligenceService;
+    private final AdaptiveCareerInsightsService adaptiveCareerInsightsService;
+    private final HistoricalSuccessSignalService historicalSuccessSignalService;
     private final DataCollector dataCollector;
     private final SkillDemandAnalyzer skillDemandAnalyzer;
     private final ApplicationAnalyzer applicationAnalyzer;
@@ -239,6 +242,75 @@ public class AnalyticsController {
     public ResponseEntity<CareerExecutionAnalyticsService.SourcePerformanceReport> getSourcePerformance(Principal principal) {
         UUID candidateId = getUserId(principal);
         return ResponseEntity.ok(careerExecutionAnalyticsService.calculateSourcePerformance(candidateId));
+    }
+
+    @GetMapping("/career-intelligence")
+    @Operation(summary = "Get career outcome profile (Milestone 20)")
+    public ResponseEntity<AdaptiveCareerIntelligenceService.CareerOutcomeProfile> getCareerIntelligence(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(adaptiveCareerIntelligenceService.getCareerOutcomeProfile(candidateId));
+    }
+
+    @GetMapping("/role-performance")
+    @Operation(summary = "Get role performance metrics (Milestone 20)")
+    public ResponseEntity<List<AdaptiveCareerIntelligenceService.RolePerformance>> getRolePerformance(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(adaptiveCareerIntelligenceService.getRolePerformance(candidateId));
+    }
+
+    @GetMapping("/skill-performance")
+    @Operation(summary = "Get skill performance metrics (Milestone 20)")
+    public ResponseEntity<List<AdaptiveCareerIntelligenceService.SkillPerformance>> getSkillPerformance(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(adaptiveCareerIntelligenceService.getSkillPerformance(candidateId));
+    }
+
+    @GetMapping("/company-performance")
+    @Operation(summary = "Get company performance metrics (Milestone 20)")
+    public ResponseEntity<List<AdaptiveCareerIntelligenceService.CompanyPerformance>> getCompanyPerformance(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(adaptiveCareerIntelligenceService.getCompanyPerformance(candidateId));
+    }
+
+    @GetMapping("/location-performance")
+    @Operation(summary = "Get location and work mode performance metrics (Milestone 20)")
+    public ResponseEntity<Map<String, Object>> getLocationPerformance(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        Map<String, Object> result = new HashMap<>();
+        result.put("locationPerformance", adaptiveCareerIntelligenceService.getLocationPerformance(candidateId));
+        result.put("remoteTypePerformance", adaptiveCareerIntelligenceService.getRemoteTypePerformance(candidateId));
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/source-performance")
+    @Operation(summary = "Get source performance metrics (Milestone 20)")
+    public ResponseEntity<List<AdaptiveCareerIntelligenceService.SourcePerformance>> getSourcePerformanceM20(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(adaptiveCareerIntelligenceService.getSourcePerformance(candidateId));
+    }
+
+    @GetMapping("/adaptive-insights")
+    @Operation(summary = "Get adaptive career insights (Milestone 20)")
+    public ResponseEntity<List<AdaptiveCareerInsightsService.CareerInsight>> getAdaptiveInsights(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(adaptiveCareerInsightsService.generateAdaptiveInsights(candidateId));
+    }
+
+    @GetMapping("/historical-success")
+    @Operation(summary = "Get historical success signal (Milestone 20)")
+    public ResponseEntity<HistoricalSuccessSignalService.HistoricalSuccessSignal> getHistoricalSuccess(
+            Principal principal,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String company,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String workMode,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) Set<String> skills,
+            @RequestParam(required = false) UUID resumeId,
+            @RequestParam(required = false) Integer resumeVersion) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(historicalSuccessSignalService.getHistoricalSignal(
+                candidateId, title, company, location, workMode, source, skills, resumeId, resumeVersion));
     }
 
     private UUID getUserId(Principal principal) {

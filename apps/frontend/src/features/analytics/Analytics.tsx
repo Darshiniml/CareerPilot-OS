@@ -32,6 +32,17 @@ export const Analytics: React.FC = () => {
     skillCoverage: 60,
   });
 
+  // Milestone 20 states
+  const [careerIntel, setCareerIntel] = useState<any>(null);
+  const [rolePerf, setRolePerf] = useState<any[]>([]);
+  const [skillPerf, setSkillPerf] = useState<any[]>([]);
+  const [companyPerf, setCompanyPerf] = useState<any[]>([]);
+  const [locationPerf, setLocationPerf] = useState<any[]>([]);
+  const [remotePerf, setRemotePerf] = useState<any[]>([]);
+  const [sourcePerf, setSourcePerf] = useState<any[]>([]);
+  const [resumePerf, setResumePerf] = useState<any[]>([]);
+  const [adaptiveInsights, setAdaptiveInsights] = useState<any[]>([]);
+
   const fetchAnalytics = async () => {
     try {
       // 1. Fetch overview metrics
@@ -110,6 +121,57 @@ export const Analytics: React.FC = () => {
           { skillName: 'Spring Boot', demandPercentage: 90, isGap: false },
           { skillName: 'Kubernetes', demandPercentage: 60, isGap: true },
         ]);
+      }
+
+      // Fetch Milestone 20 Adaptive Analytics
+      try {
+        const intelRes = await api.get('/analytics/career-intelligence');
+        setCareerIntel(intelRes.data);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const rolesRes = await api.get('/analytics/role-performance');
+        setRolePerf(rolesRes.data || []);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const skillsRes = await api.get('/analytics/skill-performance');
+        setSkillPerf(skillsRes.data || []);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const companyRes = await api.get('/analytics/company-performance');
+        setCompanyPerf(companyRes.data || []);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const locRes = await api.get('/analytics/location-performance');
+        setLocationPerf(locRes.data?.locationPerformance || []);
+        setRemotePerf(locRes.data?.remoteTypePerformance || []);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const sourceRes = await api.get('/analytics/source-performance');
+        setSourcePerf(sourceRes.data || []);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const resumeRes = await api.get('/analytics/resume-performance');
+        setResumePerf(resumeRes.data?.resumePerformances || resumeRes.data || []);
+      } catch (e) {
+        console.warn(e);
+      }
+      try {
+        const insightsRes = await api.get('/analytics/adaptive-insights');
+        setAdaptiveInsights(insightsRes.data || []);
+      } catch (e) {
+        console.warn(e);
       }
     } catch (err) {
       console.error(err);
@@ -225,6 +287,241 @@ export const Analytics: React.FC = () => {
             </Card>
           </div>
 
+        </section>
+
+        {/* Milestone 20 Sections — Adaptive Career Analytics & Performance */}
+        <section className="space-y-8">
+          <h2 className="text-heading font-bold text-jet-black tracking-tight">Adaptive Performance Analyzer</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            {/* Career Outcomes Funnel */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Career Execution Funnel</h3>
+              {!careerIntel ? (
+                <p className="text-caption text-ash-gray">No funnel data available.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-mist-gray rounded-xl">
+                    <p className="text-caption text-slate uppercase">Total Applications</p>
+                    <p className="text-subheading font-bold">{careerIntel.totalApplications}</p>
+                  </div>
+                  <div className="p-3 bg-mist-gray rounded-xl">
+                    <p className="text-caption text-slate uppercase">Verified Submissions</p>
+                    <p className="text-subheading font-bold">{careerIntel.totalVerified}</p>
+                  </div>
+                  <div className="p-3 bg-mist-gray rounded-xl">
+                    <p className="text-caption text-slate uppercase">Interviews Secured</p>
+                    <p className="text-subheading font-bold text-indigo-600">{careerIntel.totalInterviews}</p>
+                  </div>
+                  <div className="p-3 bg-mist-gray rounded-xl">
+                    <p className="text-caption text-slate uppercase">Offers Received</p>
+                    <p className="text-subheading font-bold text-green-600">{careerIntel.totalOffers}</p>
+                  </div>
+                  <div className="col-span-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-center">
+                    <div>
+                      <p className="text-caption text-indigo-700 font-semibold uppercase">Interview & Offer Rate</p>
+                      <p className="text-body-sm text-indigo-600">Avg Time: {careerIntel.averageTimeToInterview > 0 ? `${careerIntel.averageTimeToInterview.toFixed(1)}d` : '—'} to Interview</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-body font-bold text-indigo-700">{Math.round(careerIntel.interviewRate * 100)}% IR</p>
+                      <p className="text-caption text-indigo-500">{Math.round(careerIntel.offerRate * 100)}% OR</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* Adaptive Insights Panel */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Adaptive Career Insights</h3>
+              <div className="space-y-3">
+                {adaptiveInsights.length === 0 ? (
+                  <p className="text-caption text-ash-gray">No adaptive insights generated yet.</p>
+                ) : (
+                  adaptiveInsights.map((insight, idx) => (
+                    <div key={idx} className="p-3 bg-mist-gray rounded-xl border border-iron-gray/10 space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-body-sm font-bold text-jet-black">{insight.title}</span>
+                        <Badge variant={insight.confidenceStatus === 'SUFFICIENT' ? 'success' : 'neutral'}>
+                          {insight.confidenceStatus}
+                        </Badge>
+                      </div>
+                      <p className="text-body-sm text-charcoal">{insight.explanation}</p>
+                      <p className="text-caption text-slate italic">Evidence: {insight.evidence}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Role Performance */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Role Category Performance</h3>
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {rolePerf.length === 0 ? (
+                  <p className="text-caption text-ash-gray">No role performance data recorded.</p>
+                ) : (
+                  rolePerf.map((rp, idx) => (
+                    <div key={idx} className="flex flex-col border-b border-iron-gray/10 last:border-b-0 pb-2 last:pb-0">
+                      <div className="flex justify-between items-start">
+                        <span className="text-body-sm font-bold text-jet-black">{rp.roleName}</span>
+                        <span>
+                          {rp.confidenceStatus === 'SUFFICIENT' ? (
+                            <span className="text-body-sm font-semibold text-indigo-600">{Math.round(rp.interviewRate * 100)}% IR</span>
+                          ) : (
+                            <Badge variant="neutral">INSUFFICIENT_DATA</Badge>
+                          )}
+                        </span>
+                      </div>
+                      <span className="text-caption text-slate">{rp.applications} apps ({rp.interviews} interviews, {rp.offers} offers, {rp.rejections} rejections)</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Skill Success Outcome Correlation */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Skill Outcome Associations</h3>
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {skillPerf.length === 0 ? (
+                  <p className="text-caption text-ash-gray">No skill outcome association data recorded.</p>
+                ) : (
+                  skillPerf.map((sp, idx) => (
+                    <div key={idx} className="flex justify-between items-center py-1.5 border-b border-iron-gray/10 last:border-b-0">
+                      <span className="text-body-sm font-bold text-jet-black">{sp.skillName}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-caption text-slate">{sp.applications} apps</span>
+                        {sp.confidenceStatus === 'SUFFICIENT' ? (
+                          <span className="text-body-sm font-semibold text-indigo-600">{Math.round(sp.interviewRate * 100)}% IR</span>
+                        ) : (
+                          <Badge variant="neutral">INSUFFICIENT</Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Company Performance */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Company Performance Breakdown</h3>
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {companyPerf.length === 0 ? (
+                  <p className="text-caption text-ash-gray">No company performance data recorded.</p>
+                ) : (
+                  companyPerf.map((cp, idx) => (
+                    <div key={idx} className="flex flex-col border-b border-iron-gray/10 last:border-b-0 pb-2 last:pb-0">
+                      <div className="flex justify-between">
+                        <span className="text-body-sm font-semibold">{cp.companyName}</span>
+                        <span>
+                          {cp.confidenceStatus === 'SUFFICIENT' ? (
+                            <span className="text-body-sm font-semibold text-indigo-600">{Math.round(cp.interviewRate * 100)}% IR</span>
+                          ) : (
+                            <Badge variant="neutral">INSUFFICIENT</Badge>
+                          )}
+                        </span>
+                      </div>
+                      <span className="text-caption text-slate">{cp.applications} apps ({cp.interviews} interviews, {cp.offers} offers)</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Source Performance */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Discovery Source Performance</h3>
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {sourcePerf.length === 0 ? (
+                  <p className="text-caption text-ash-gray">No source performance data recorded.</p>
+                ) : (
+                  sourcePerf.map((sp, idx) => (
+                    <div key={idx} className="flex flex-col border-b border-iron-gray/10 last:border-b-0 pb-2 last:pb-0">
+                      <div className="flex justify-between">
+                        <span className="text-body-sm font-semibold capitalize">{sp.source}</span>
+                        <span>
+                          {sp.confidenceStatus === 'SUFFICIENT' ? (
+                            <span className="text-body-sm font-semibold text-indigo-600">{Math.round(sp.interviewRate * 100)}% IR</span>
+                          ) : (
+                            <Badge variant="neutral">INSUFFICIENT</Badge>
+                          )}
+                        </span>
+                      </div>
+                      <span className="text-caption text-slate">{sp.applications} apps ({sp.interviews} interviews, {sp.offers} offers)</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Location & Remote Type Performance */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Location & Remote Performance</h3>
+              <div className="space-y-4">
+                <div>
+                  <span className="text-caption font-semibold uppercase text-slate">Location Analytics</span>
+                  <div className="space-y-2 mt-2">
+                    {locationPerf.length === 0 ? (
+                      <p className="text-caption text-ash-gray">No location data.</p>
+                    ) : (
+                      locationPerf.map((lp, idx) => (
+                        <div key={idx} className="flex justify-between text-body-sm">
+                          <span>{lp.location}</span>
+                          <span className="font-semibold">{lp.confidenceStatus === 'SUFFICIENT' ? `${Math.round(lp.interviewRate * 100)}% IR` : 'INSUFFICIENT'}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-caption font-semibold uppercase text-slate">Remote Style Analytics</span>
+                  <div className="space-y-2 mt-2">
+                    {remotePerf.length === 0 ? (
+                      <p className="text-caption text-ash-gray">No remote style data.</p>
+                    ) : (
+                      remotePerf.map((rp, idx) => (
+                        <div key={idx} className="flex justify-between text-body-sm">
+                          <span>{rp.workMode}</span>
+                          <span className="font-semibold">{rp.confidenceStatus === 'SUFFICIENT' ? `${Math.round(rp.interviewRate * 100)}% IR` : 'INSUFFICIENT'}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Resume Performance */}
+            <Card variant="white" className="space-y-4">
+              <h3 className="text-body font-bold text-jet-black">Resume Version Comparison</h3>
+              <div className="space-y-3">
+                {resumePerf.length === 0 ? (
+                  <p className="text-caption text-ash-gray">No resume comparison data recorded.</p>
+                ) : (
+                  resumePerf.map((rp, idx) => (
+                    <div key={idx} className="flex flex-col border-b border-iron-gray/10 last:border-b-0 pb-2 last:pb-0">
+                      <div className="flex justify-between">
+                        <span className="text-body-sm font-semibold truncate max-w-[200px]">{rp.title}</span>
+                        <span>
+                          {rp.confidenceStatus === 'SUFFICIENT' ? (
+                            <span className="text-body-sm font-semibold text-indigo-600">{Math.round(rp.interviewRate * 100)}% IR</span>
+                          ) : (
+                            <Badge variant="neutral">INSUFFICIENT</Badge>
+                          )}
+                        </span>
+                      </div>
+                      <span className="text-caption text-slate">{rp.applications} applications ({rp.interviews} interviews, {rp.offers} offers)</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+          </div>
         </section>
 
       </div>

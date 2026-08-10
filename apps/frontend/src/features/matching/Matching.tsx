@@ -25,6 +25,7 @@ interface Weights {
   employmentTypeMatch: number;
   careerGrowthMatch: number;
   learningOpportunityMatch: number;
+  historicalSuccess: number;
 }
 
 interface MatchExplanation {
@@ -118,6 +119,7 @@ export const Matching: React.FC = () => {
       employmentTypeMatch: 0.05,
       careerGrowthMatch: 0.05,
       learningOpportunityMatch: 0.05,
+      historicalSuccess: 0.0,
     };
     
     return Object.entries(defaults).every(([k, v]) => {
@@ -319,15 +321,35 @@ export const Matching: React.FC = () => {
                   </div>
 
                   {/* Factor Scoring Breakdown */}
-                  <Card variant="white" className="space-y-4">
-                    <h4 className="text-body-sm font-bold text-jet-black">Explainable Factor Scores</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Object.entries(matchResult.individualScores).map(([factor, score]) => (
-                        <div key={factor} className="flex justify-between items-center py-2 border-b border-iron-gray/10">
-                          <span className="text-body-sm text-charcoal capitalize">{factor.replace('Match', '')}</span>
-                          <span className="text-caption font-bold text-jet-black">{score}%</span>
-                        </div>
-                      ))}
+                  <Card variant="white" className="space-y-6">
+                    <div>
+                      <h4 className="text-body-sm font-bold text-jet-black border-b border-iron-gray/10 pb-2">Current Match Factors</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                        {Object.entries(matchResult.individualScores)
+                          .filter(([factor]) => !['historicalSuccess'].includes(factor))
+                          .map(([factor, score]) => (
+                            <div key={factor} className="flex justify-between items-center py-2 border-b border-iron-gray/10">
+                              <span className="text-body-sm text-charcoal capitalize">{factor.replace('Match', '')}</span>
+                              <span className="text-caption font-bold text-jet-black">{score}%</span>
+                            </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-body-sm font-bold text-jet-black border-b border-iron-gray/10 pb-2">Historical Outcomes & Match Signals</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                        {Object.entries(matchResult.individualScores)
+                          .filter(([factor]) => ['historicalSuccess'].includes(factor))
+                          .map(([factor, score]) => (
+                            <div key={factor} className="flex justify-between items-center py-2 border-b border-iron-gray/10">
+                              <span className="text-body-sm text-charcoal capitalize">Historical Success Score</span>
+                              <span className="text-body-sm font-bold text-indigo-600">
+                                {score > 0 ? `${score}%` : 'INSUFFICIENT DATA'}
+                              </span>
+                            </div>
+                        ))}
+                      </div>
                     </div>
                   </Card>
 

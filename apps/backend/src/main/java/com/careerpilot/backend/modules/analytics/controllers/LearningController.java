@@ -33,6 +33,7 @@ public class LearningController {
     private final InterviewAnalyzer interviewAnalyzer;
     private final CareerInsights careerInsights;
     private final UserRepository userRepository;
+    private final CareerLearningRecommendationService careerLearningRecommendationService;
 
     @PostMapping("/path")
     @Operation(summary = "Generate a prerequisite-aware learning path for a skill")
@@ -89,6 +90,13 @@ public class LearningController {
 
         List<Map<String, Object>> recommendations = careerInsights.generateRecommendations(missingSkills, demandPercentages, scores);
         return ResponseEntity.ok(recommendations);
+    }
+
+    @GetMapping("/career-recommendations")
+    @Operation(summary = "Get career learning recommendations (Milestone 20)")
+    public ResponseEntity<List<CareerLearningRecommendationService.CareerLearningRecommendation>> getCareerRecommendations(Principal principal) {
+        UUID candidateId = getUserId(principal);
+        return ResponseEntity.ok(careerLearningRecommendationService.getCareerRecommendations(candidateId));
     }
 
     @PostMapping("/progress")

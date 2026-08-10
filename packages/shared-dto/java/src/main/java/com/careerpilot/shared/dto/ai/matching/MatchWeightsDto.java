@@ -25,4 +25,5 @@ public class MatchWeightsDto {
     private Double employmentTypeMatch;
     private Double careerGrowthMatch;
     private Double learningOpportunityMatch;
+    private Double historicalSuccess;
 }

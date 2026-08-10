@@ -41,6 +41,15 @@ interface JobItem {
   applicationState?: string;
   matchedSkills?: string[];
   missingSkills?: string[];
+  // Milestone 20 additions
+  historicalSuccessSignal?: {
+    available: boolean;
+    confidenceStatus: string;
+    historicalSuccessScore: number;
+    explanation: string;
+  };
+  priorityScore?: number;
+  priorityLevel?: string;
 }
 
 export const Jobs: React.FC = () => {
@@ -150,14 +159,52 @@ export const Jobs: React.FC = () => {
         };
       });
 
-      setJobs(parsedJobs);
+      // Fetch historical success signals concurrently for the visible job list
+      const jobsWithSignals = await Promise.all(parsedJobs.map(async (job) => {
+        try {
+          const params = new URLSearchParams();
+          if (job.title) params.append('title', job.title);
+          if (job.companyName) params.append('company', job.companyName);
+          if (job.location) params.append('location', job.location);
+          if (job.remotePolicy) params.append('workMode', job.remotePolicy);
+          if (job.source) params.append('source', job.source);
+          if (job.skills && job.skills.length > 0) {
+            job.skills.forEach(s => params.append('skills', s));
+          }
+
+          const sigRes = await api.get(`/analytics/historical-success?${params.toString()}`);
+          const signal = sigRes.data;
+
+          const matchScore = job.matchScore || 70;
+          let priorityScore = matchScore;
+          if (signal && signal.available) {
+            priorityScore = Math.round((matchScore + signal.historicalSuccessScore) / 2);
+          }
+
+          let priorityLevel = 'MEDIUM';
+          if (priorityScore >= 80) priorityLevel = 'HIGH';
+          else if (priorityScore < 60) priorityLevel = 'LOW';
+
+          return {
+            ...job,
+            historicalSuccessSignal: signal,
+            priorityScore,
+            priorityLevel
+          };
+        } catch (e) {
+          console.warn('Error fetching historical success signal:', e);
+          return job;
+        }
+      }));
+
+      setJobs(jobsWithSignals);
       setTotalResults(total);
       setTotalPages(pages);
 
       // Deep link query check
       const queryId = searchParams.get('id');
       if (queryId) {
-        const matched = parsedJobs.find((x) => x.jobId === queryId);
+        const matched = jobsWithSignals.find((x) => x.jobId === queryId);
         if (matched) {
           setSelectedJob(matched);
           setIsDetailsModalOpen(true);
@@ -336,7 +383,19 @@ export const Jobs: React.FC = () => {
                     
                     {job.matchScore !== undefined && (
                       <Badge variant={job.matchScore >= 80 ? 'active' : 'neutral'}>
-                        {job.matchScore}% Match
+                        MATCH: {job.matchScore}%
+                      </Badge>
+                    )}
+
+                    {job.historicalSuccessSignal !== undefined && (
+                      <Badge variant={job.historicalSuccessSignal.available ? 'active' : 'neutral'}>
+                        HISTORICAL SUCCESS: {job.historicalSuccessSignal.available ? `${Math.round(job.historicalSuccessSignal.historicalSuccessScore)}%` : 'INSUFFICIENT DATA'}
+                      </Badge>
+                    )}
+
+                    {job.priorityLevel !== undefined && (
+                      <Badge variant={job.priorityLevel === 'HIGH' ? 'active' : 'neutral'}>
+                        PRIORITY: {job.priorityLevel}
                       </Badge>
                     )}
 
@@ -359,6 +418,14 @@ export const Jobs: React.FC = () => {
                       Source: {job.source}
                     </span>
                   </div>
+
+                  {/* Prioritization Explanation */}
+                  {job.historicalSuccessSignal && (
+                    <p className="text-caption text-indigo-600 bg-indigo-50 border border-indigo-100 p-2.5 rounded-lg">
+                      <span className="font-semibold">✓ Prioritized because: </span>
+                      {job.historicalSuccessSignal.explanation}
+                    </p>
+                  )}
 
                   {/* Skills & Match Breakdown badges */}
                   <div className="flex flex-wrap gap-2 pt-1">

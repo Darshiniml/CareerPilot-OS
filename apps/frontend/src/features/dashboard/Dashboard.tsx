@@ -46,6 +46,13 @@ export const Dashboard: React.FC = () => {
   });
   const [health, setHealth] = useState<HealthScore | null>(null);
   const [jobs, setJobs] = useState<RecommendedJob[]>([]);
+  
+  // Milestone 20 states
+  const [careerIntel, setCareerIntel] = useState<any>(null);
+  const [rolePerf, setRolePerf] = useState<any[]>([]);
+  const [skillPerf, setSkillPerf] = useState<any[]>([]);
+  const [sourcePerf, setSourcePerf] = useState<any[]>([]);
+  const [resumePerf, setResumePerf] = useState<any[]>([]);
 
   useEffect(() => {
     fetchUserContext();
@@ -134,6 +141,42 @@ export const Dashboard: React.FC = () => {
           }
         } catch (e) {
           setHealth(null);
+        }
+
+        // Fetch career intelligence data
+        try {
+          const intelRes = await api.get('/analytics/career-intelligence');
+          setCareerIntel(intelRes.data);
+        } catch (e) {
+          console.warn('Career intelligence query error:', e);
+        }
+
+        try {
+          const rolesRes = await api.get('/analytics/role-performance');
+          setRolePerf(rolesRes.data || []);
+        } catch (e) {
+          console.warn('Role performance query error:', e);
+        }
+
+        try {
+          const skillsRes = await api.get('/analytics/skill-performance');
+          setSkillPerf(skillsRes.data || []);
+        } catch (e) {
+          console.warn('Skill performance query error:', e);
+        }
+
+        try {
+          const sourcesRes = await api.get('/analytics/source-performance');
+          setSourcePerf(sourcesRes.data || []);
+        } catch (e) {
+          console.warn('Source performance query error:', e);
+        }
+
+        try {
+          const resumesRes = await api.get('/analytics/resume-performance');
+          setResumePerf(resumesRes.data?.resumePerformances || resumesRes.data || []);
+        } catch (e) {
+          console.warn('Resume performance query error:', e);
         }
 
         setJobs(recommendedJobs);
@@ -315,6 +358,130 @@ export const Dashboard: React.FC = () => {
                 <ArrowRight className="w-4 h-4 text-slate" />
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* Milestone 20 — Adaptive Career Intelligence Dashboard Section */}
+        <section className="space-y-4">
+          <h3 className="text-heading-sm font-bold text-jet-black tracking-tight">Adaptive Career Intelligence</h3>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Career Health Panel */}
+            <Card variant="white" className="space-y-4">
+              <h4 className="text-body-sm font-bold text-jet-black">Career History & Outcomes</h4>
+              {(!careerIntel || careerIntel.totalApplications < 10) ? (
+                <div className="py-6 text-center">
+                  <p className="text-body-sm text-slate">Historical Signal: <Badge variant="neutral">INSUFFICIENT_DATA</Badge></p>
+                  <p className="text-caption text-ash-gray mt-2">Apply and record outcomes for at least 10 jobs to build career outcomes model (currently: {careerIntel?.totalApplications || 0}/10).</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-body-sm text-slate">Applications / Submissions</span>
+                    <span className="text-body-sm font-semibold">{careerIntel.totalApplications}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-body-sm text-slate">Interviews Secured</span>
+                    <span className="text-body-sm font-semibold">{careerIntel.totalInterviews}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-body-sm text-slate">Offers Received</span>
+                    <span className="text-body-sm font-semibold text-green-600">{careerIntel.totalOffers}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-iron-gray/10 pt-2">
+                    <span className="text-body-sm font-bold">Interview Conversion Rate</span>
+                    <span className="text-body-sm font-bold text-indigo-600">{Math.round(careerIntel.interviewRate * 100)}%</span>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* Performance Dimensions Panel */}
+            <Card variant="white" className="space-y-4">
+              <h4 className="text-body-sm font-bold text-jet-black">Top Performing Dimensions</h4>
+              <div className="space-y-3">
+                
+                {/* Roles */}
+                <div>
+                  <span className="text-caption font-semibold uppercase tracking-wider text-slate">Top Roles</span>
+                  {rolePerf.filter(r => r.confidenceStatus === 'SUFFICIENT').length === 0 ? (
+                    <p className="text-caption text-ash-gray mt-0.5">Roles: <Badge variant="neutral">INSUFFICIENT_DATA</Badge></p>
+                  ) : (
+                    <ul className="text-body-sm space-y-1 mt-1">
+                      {rolePerf.filter(r => r.confidenceStatus === 'SUFFICIENT')
+                        .sort((a,b) => b.interviewRate - a.interviewRate).slice(0, 2).map((rp, i) => (
+                          <li key={i} className="flex justify-between">
+                            <span>{rp.roleName}</span>
+                            <span className="font-semibold text-indigo-600">{Math.round(rp.interviewRate * 100)}% IR</span>
+                          </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Skills */}
+                <div>
+                  <span className="text-caption font-semibold uppercase tracking-wider text-slate">Top Success-Correlated Skills</span>
+                  {skillPerf.filter(s => s.confidenceStatus === 'SUFFICIENT').length === 0 ? (
+                    <p className="text-caption text-ash-gray mt-0.5">Skills: <Badge variant="neutral">INSUFFICIENT_DATA</Badge></p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {skillPerf.filter(s => s.confidenceStatus === 'SUFFICIENT')
+                        .sort((a,b) => b.interviewRate - a.interviewRate).slice(0, 3).map((sp, i) => (
+                          <Badge key={i} variant="active">{sp.skillName}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sources */}
+                <div>
+                  <span className="text-caption font-semibold uppercase tracking-wider text-slate">Top Job Sources</span>
+                  {sourcePerf.filter(s => s.confidenceStatus === 'SUFFICIENT').length === 0 ? (
+                    <p className="text-caption text-ash-gray mt-0.5">Sources: <Badge variant="neutral">INSUFFICIENT_DATA</Badge></p>
+                  ) : (
+                    <ul className="text-body-sm space-y-1 mt-1">
+                      {sourcePerf.filter(s => s.confidenceStatus === 'SUFFICIENT')
+                        .sort((a,b) => b.interviewRate - a.interviewRate).slice(0, 2).map((sp, i) => (
+                          <li key={i} className="flex justify-between">
+                            <span>{sp.source}</span>
+                            <span className="font-semibold text-indigo-600">{Math.round(sp.interviewRate * 100)}% IR</span>
+                          </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+              </div>
+            </Card>
+
+            {/* Resume Performance Panel */}
+            <Card variant="white" className="space-y-4">
+              <h4 className="text-body-sm font-bold text-jet-black">Resume Version Performance</h4>
+              {resumePerf.length === 0 ? (
+                <p className="text-caption text-ash-gray">No resume version data collected.</p>
+              ) : (
+                <div className="space-y-3">
+                  {resumePerf.map((rp, i) => (
+                    <div key={i} className="flex flex-col border-b border-iron-gray/10 last:border-b-0 pb-2 last:pb-0">
+                      <div className="flex justify-between">
+                        <span className="text-body-sm font-semibold truncate max-w-[180px]">{rp.title}</span>
+                        <span className="text-caption">
+                          {rp.confidenceStatus === 'SUFFICIENT' ? (
+                            <span className="font-semibold text-indigo-600">{Math.round(rp.interviewRate * 100)}% IR</span>
+                          ) : (
+                            <Badge variant="neutral">INSUFFICIENT</Badge>
+                          )}
+                        </span>
+                      </div>
+                      <span className="text-caption text-ash-gray">{rp.applications} applications ({rp.interviews} interviews, {rp.offers || 0} offers)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
           </div>
         </section>
 
