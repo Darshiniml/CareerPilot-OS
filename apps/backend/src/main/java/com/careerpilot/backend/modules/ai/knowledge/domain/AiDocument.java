@@ -70,5 +70,6 @@ public class AiDocument {
 
     @OneToMany(mappedBy = "document", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonManagedReference
     private List<AiChunk> chunks = new ArrayList<>();
 }

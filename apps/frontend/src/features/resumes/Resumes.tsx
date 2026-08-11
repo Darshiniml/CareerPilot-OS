@@ -48,6 +48,17 @@ export const Resumes: React.FC = () => {
   const [uploadStatus, setUploadStatus] = useState<'IDLE' | 'UPLOADING' | 'PARSING' | 'COMPLETED' | 'FAILED'>('IDLE');
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [storageStatus, setStorageStatus] = useState<string>('HEALTHY');
+
+  const fetchStorageStatus = async () => {
+    try {
+      const res = await api.get('/resumes/storage-status');
+      setStorageStatus(res.data?.status || 'HEALTHY');
+    } catch (e) {
+      console.error(e);
+      setStorageStatus('UNAVAILABLE');
+    }
+  };
 
   const fetchResumes = async () => {
     try {
@@ -69,6 +80,7 @@ export const Resumes: React.FC = () => {
 
   useEffect(() => {
     fetchResumes();
+    fetchStorageStatus();
   }, []);
 
   useEffect(() => {
@@ -160,6 +172,13 @@ export const Resumes: React.FC = () => {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (storageStatus !== 'HEALTHY') {
+      setNotification({
+        type: 'error',
+        message: 'Resume storage is temporarily unavailable. Please try again when the storage service is available.'
+      });
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -296,39 +315,55 @@ export const Resumes: React.FC = () => {
         )}
 
         {/* Drag & Drop Upload Zone */}
-        <div 
-          onDragEnter={handleDrag}
-          onDragOver={handleDrag}
-          onDragLeave={handleDrag}
-          onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-xl p-8 text-center transition-all flex flex-col items-center justify-center space-y-4 ${
-            dragActive 
-              ? 'border-jet-black bg-mist-gray/60' 
-              : 'border-iron-gray/30 bg-paper-white hover:border-iron-gray/60'
-          }`}
-        >
-          <div className="p-4 bg-mist-gray rounded-full">
-            <FileUp className="w-8 h-8 text-jet-black" />
+        {storageStatus !== 'HEALTHY' ? (
+          <Card variant="white" className="border-red-500 bg-red-50/50 p-6 flex flex-col items-center text-center space-y-4">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+            <div className="space-y-1">
+              <p className="text-body-sm font-bold text-red-800">Resume storage is temporarily unavailable.</p>
+              <p className="text-caption text-red-700">Please try again when the storage service is available.</p>
+            </div>
+            <button
+              onClick={fetchStorageStatus}
+              className="px-4 py-2 text-caption font-semibold text-red-700 border border-red-300 rounded hover:bg-red-50"
+            >
+              Retry Upload
+            </button>
+          </Card>
+        ) : (
+          <div
+            onDragEnter={handleDrag}
+            onDragOver={handleDrag}
+            onDragLeave={handleDrag}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-all flex flex-col items-center justify-center space-y-4 ${
+              dragActive 
+                ? 'border-jet-black bg-mist-gray/60' 
+                : 'border-iron-gray/30 bg-paper-white hover:border-iron-gray/60'
+            }`}
+          >
+            <div className="p-4 bg-mist-gray rounded-full">
+              <FileUp className="w-8 h-8 text-jet-black" />
+            </div>
+            <div>
+              <p className="text-body-sm font-bold text-jet-black">Drag & Drop Resume Here</p>
+              <p className="text-caption text-slate mt-1">Supports PDF / DOCX formats up to 10MB</p>
+            </div>
+            
+            <input
+              type="file"
+              id="resume-file-workspace"
+              className="hidden"
+              accept=".pdf,.docx"
+              onChange={handleFileUpload}
+              disabled={uploading}
+            />
+            <label htmlFor="resume-file-workspace" className="cursor-pointer">
+              <Button as="span" disabled={uploading}>
+                {uploading ? 'Uploading...' : 'Select Resume'}
+              </Button>
+            </label>
           </div>
-          <div>
-            <p className="text-body-sm font-bold text-jet-black">Drag & Drop Resume Here</p>
-            <p className="text-caption text-slate mt-1">Supports PDF / DOCX formats up to 10MB</p>
-          </div>
-          
-          <input
-            type="file"
-            id="resume-file-workspace"
-            className="hidden"
-            accept=".pdf,.docx"
-            onChange={handleFileUpload}
-            disabled={uploading}
-          />
-          <label htmlFor="resume-file-workspace" className="cursor-pointer">
-            <Button as="span" disabled={uploading}>
-              {uploading ? 'Uploading...' : 'Select Resume'}
-            </Button>
-          </label>
-        </div>
+        )}
 
         {/* Processing Checklist Pipeline */}
         {uploadStatus !== 'IDLE' && (

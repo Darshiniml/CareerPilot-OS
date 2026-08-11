@@ -15,6 +15,11 @@ public class AdaptiveCareerInsightsService {
     private final AdaptiveCareerIntelligenceService careerIntelligenceService;
 
     public List<CareerInsight> generateAdaptiveInsights(UUID candidateId) {
+        AdaptiveCareerIntelligenceService.CareerOutcomeProfile profile = careerIntelligenceService.getCareerOutcomeProfile(candidateId);
+        if (profile.getTotalApplications() == 0) {
+            return Collections.emptyList();
+        }
+
         List<CareerInsight> insights = new ArrayList<>();
 
         // 1. Role Insight

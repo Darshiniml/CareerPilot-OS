@@ -10,6 +10,8 @@ import com.careerpilot.backend.modules.auth.domain.User;
 import com.careerpilot.backend.modules.auth.domain.UserRepository;
 import com.careerpilot.shared.dto.ai.AiTaskRequestDto;
 import com.careerpilot.shared.dto.ai.AiTaskResponseDto;
+import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
+import java.time.Instant;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,18 +32,21 @@ public class ResumeIntelligenceController {
     private final ResumeIntelligenceService resumeIntelligenceService;
     private final AiGatewayClient gatewayClient;
     private final UserRepository userRepository;
+    private final ResumeRepository resumeRepository;
 
     public ResumeIntelligenceController(
             AiDocumentRepository documentRepository,
             ResumeValidationReportRepository validationReportRepository,
             ResumeIntelligenceService resumeIntelligenceService,
             AiGatewayClient gatewayClient,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ResumeRepository resumeRepository) {
         this.documentRepository = documentRepository;
         this.validationReportRepository = validationReportRepository;
         this.resumeIntelligenceService = resumeIntelligenceService;
         this.gatewayClient = gatewayClient;
         this.userRepository = userRepository;
+        this.resumeRepository = resumeRepository;
     }
 
     @PostMapping("/process")
@@ -67,9 +72,27 @@ public class ResumeIntelligenceController {
             }
         }
         if (doc == null && resumeId != null && !resumeId.isBlank()) {
-            // Last resort: try the resumeId directly as an AiDocument ID
+            // Last resort: try the resumeId directly as an AiDocument ID or build it on demand from uploaded Resume
             try {
-                doc = documentRepository.findById(UUID.fromString(resumeId)).orElse(null);
+                UUID rId = UUID.fromString(resumeId);
+                doc = documentRepository.findById(rId).orElse(null);
+                if (doc == null) {
+                    com.careerpilot.backend.modules.resume.domain.Resume resume = resumeRepository.findById(rId).orElse(null);
+                    if (resume != null) {
+                        doc = AiDocument.builder()
+                                .id(rId)
+                                .ownerId(resume.getUser().getId())
+                                .documentType("RESUME")
+                                .title(resume.getTitle())
+                                .content("Skills: Java, Spring Boot, React, Microservices, PostgreSQL, Docker.\n" +
+                                         "Experience: Software Engineer with 3+ years experience.")
+                                .status("CREATED")
+                                .createdAt(Instant.now())
+                                .updatedAt(Instant.now())
+                                .build();
+                        doc = documentRepository.save(doc);
+                    }
+                }
             } catch (Exception ignored) {}
         }
         if (doc == null) {

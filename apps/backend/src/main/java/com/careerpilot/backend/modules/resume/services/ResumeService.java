@@ -7,6 +7,7 @@ import com.careerpilot.backend.modules.resume.domain.ResumeVersion;
 import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
 import com.careerpilot.backend.modules.resume.repositories.ResumeVersionRepository;
 import com.careerpilot.backend.modules.storage.StorageService;
+import com.careerpilot.backend.modules.storage.StorageStatus;
 import com.careerpilot.shared.dto.resume.ResumeDto;
 import com.careerpilot.shared.dto.resume.ResumeVersionDto;
 import com.careerpilot.shared.events.ResumeDeletedEvent;
@@ -68,6 +69,11 @@ public class ResumeService {
 
     @Transactional
     public ResumeDto uploadResume(UUID userId, String title, String originalFilename, String mimeType, byte[] fileBytes) {
+        StorageStatus health = storageService.checkHealth();
+        if (health != StorageStatus.HEALTHY) {
+            throw new IllegalStateException("Resume storage is temporarily unavailable: " + health.name());
+        }
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -149,6 +155,10 @@ public class ResumeService {
         eventPublisher.publishEvent(event);
 
         return mapToDto(savedResume);
+    }
+
+    public StorageStatus getStorageHealth() {
+        return storageService.checkHealth();
     }
 
     @Transactional

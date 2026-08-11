@@ -23,6 +23,7 @@ public class AiChunk {
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "document_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonBackReference
     private AiDocument document;
     
     @Column(name = "chunk_number", nullable = false)

@@ -19,4 +19,9 @@ public interface StorageService {
      * Deletes a file.
      */
     void deleteFile(String fileUrl);
+
+    /**
+     * Performs a health check of the storage connection.
+     */
+    StorageStatus checkHealth();
 }

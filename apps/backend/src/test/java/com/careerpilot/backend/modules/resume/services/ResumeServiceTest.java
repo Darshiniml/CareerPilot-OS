@@ -6,6 +6,7 @@ import com.careerpilot.backend.modules.resume.domain.Resume;
 import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
 import com.careerpilot.backend.modules.resume.repositories.ResumeVersionRepository;
 import com.careerpilot.backend.modules.storage.StorageService;
+import com.careerpilot.backend.modules.storage.StorageStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -51,6 +52,7 @@ class ResumeServiceTest {
         userId = UUID.randomUUID();
         mockUser = User.builder().id(userId).email("user@example.com").build();
         Mockito.when(userRepository.findById(userId)).thenReturn(Optional.of(mockUser));
+        Mockito.when(storageService.checkHealth()).thenReturn(StorageStatus.HEALTHY);
     }
 
     @Test

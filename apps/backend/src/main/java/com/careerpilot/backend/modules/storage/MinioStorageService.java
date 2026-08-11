@@ -17,6 +17,12 @@ public class MinioStorageService implements StorageService {
 
     private final S3Client s3Client;
 
+    @Value("${storage.s3.access-key}")
+    private String accessKey;
+
+    @Value("${storage.s3.secret-key}")
+    private String secretKey;
+
     @Value("${storage.s3.bucket-name}")
     private String bucketName;
 
@@ -29,21 +35,58 @@ public class MinioStorageService implements StorageService {
 
     @PostConstruct
     public void init() {
+        StorageStatus health = checkHealth();
+        if (health == StorageStatus.HEALTHY) {
+            log.info("S3 Bucket '{}' verified successfully.", bucketName);
+        } else if (health == StorageStatus.BUCKET_NOT_FOUND) {
+            try {
+                log.info("S3 Bucket '{}' does not exist. Creating bucket.", bucketName);
+                CreateBucketRequest createBucketRequest = CreateBucketRequest.builder()
+                        .bucket(bucketName)
+                        .build();
+                s3Client.createBucket(createBucketRequest);
+                log.info("S3 Bucket '{}' created successfully.", bucketName);
+            } catch (Exception e) {
+                log.error("Failed to create storage bucket '{}': {}", bucketName, e.getMessage());
+            }
+        } else {
+            log.error("Failed to initialize storage service bucket: status={}", health);
+        }
+    }
+
+    @Override
+    public StorageStatus checkHealth() {
+        if (accessKey == null || accessKey.trim().isEmpty() || "dummy".equalsIgnoreCase(accessKey) ||
+            secretKey == null || secretKey.trim().isEmpty() || "dummy".equalsIgnoreCase(secretKey)) {
+            return StorageStatus.NOT_CONFIGURED;
+        }
         try {
             HeadBucketRequest headBucketRequest = HeadBucketRequest.builder()
                     .bucket(bucketName)
                     .build();
             s3Client.headBucket(headBucketRequest);
-            log.info("S3 Bucket '{}' verified successfully.", bucketName);
+            return StorageStatus.HEALTHY;
         } catch (NoSuchBucketException e) {
-            log.info("S3 Bucket '{}' does not exist. Creating bucket.", bucketName);
-            CreateBucketRequest createBucketRequest = CreateBucketRequest.builder()
-                    .bucket(bucketName)
-                    .build();
-            s3Client.createBucket(createBucketRequest);
-            log.info("S3 Bucket '{}' created successfully.", bucketName);
+            log.warn("[STORAGE] MinIO health check failed\nstatus=BUCKET_NOT_FOUND\nendpoint={}\nreason={}", endpoint, e.getMessage());
+            return StorageStatus.BUCKET_NOT_FOUND;
+        } catch (S3Exception e) {
+            if (e.statusCode() == 403) {
+                log.warn("[STORAGE] MinIO health check failed\nstatus=ACCESS_DENIED\nendpoint={}\nreason={}", endpoint, e.getMessage());
+                return StorageStatus.ACCESS_DENIED;
+            } else if (e.statusCode() == 401) {
+                log.warn("[STORAGE] MinIO health check failed\nstatus=AUTHENTICATION_FAILED\nendpoint={}\nreason={}", endpoint, e.getMessage());
+                return StorageStatus.AUTHENTICATION_FAILED;
+            }
+            log.warn("[STORAGE] MinIO health check failed\nstatus=FAILED\nendpoint={}\nreason={}", endpoint, e.getMessage());
+            return StorageStatus.FAILED;
         } catch (Exception e) {
-            log.error("Failed to initialize storage service bucket: {}", e.getMessage());
+            String msg = e.getMessage();
+            StorageStatus status = StorageStatus.UNAVAILABLE;
+            if (msg != null && (msg.contains("Connection refused") || msg.contains("Connection timeout") || msg.contains("connect timed out") || msg.contains("refused"))) {
+                status = StorageStatus.UNAVAILABLE;
+            }
+            log.warn("[STORAGE] MinIO health check failed\nstatus={}\nendpoint={}\nreason={}", status, endpoint, msg);
+            return status;
         }
     }
 

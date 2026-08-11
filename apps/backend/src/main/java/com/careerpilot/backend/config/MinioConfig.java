@@ -24,10 +24,13 @@ public class MinioConfig {
 
     @Bean
     public S3Client s3Client() {
+        String key = (accessKey == null || accessKey.trim().isEmpty()) ? "dummy" : accessKey;
+        String secret = (secretKey == null || secretKey.trim().isEmpty()) ? "dummy" : secretKey;
+        String ep = (endpoint == null || endpoint.trim().isEmpty()) ? "http://localhost:9000" : endpoint;
         return S3Client.builder()
-                .endpointOverride(URI.create(endpoint))
+                .endpointOverride(URI.create(ep))
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)
+                        AwsBasicCredentials.create(key, secret)
                 ))
                 .region(Region.US_EAST_1) // Region setting is mandatory for AWS SDK builders
                 .forcePathStyle(true) // Crucial for direct path-style compatibility on custom S3 / MinIO hosts

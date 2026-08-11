@@ -19,6 +19,9 @@ import java.io.IOException;
 import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
+import com.careerpilot.backend.modules.storage.StorageStatus;
 
 @RestController
 @RequestMapping("/api/v1/resumes")
@@ -85,6 +88,15 @@ public class ResumeController {
         UUID userId = getUserId(principal);
         resumeService.setDefaultResume(userId, id);
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/storage-status")
+    @Operation(summary = "Get storage health status")
+    public ResponseEntity<Map<String, String>> getStorageStatus() {
+        StorageStatus health = resumeService.getStorageHealth();
+        Map<String, String> response = new HashMap<>();
+        response.put("status", health.name());
+        return ResponseEntity.ok(response);
     }
 
     private UUID getUserId(Principal principal) {
