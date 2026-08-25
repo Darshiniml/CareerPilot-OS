@@ -1,6 +1,7 @@
 package com.careerpilot.backend.modules.agent.services;
 
 import com.careerpilot.backend.modules.agent.domain.*;
+import com.careerpilot.backend.modules.analytics.services.CareerAnalyticsService;
 import com.careerpilot.backend.modules.application.domain.ApplicationRecord;
 import com.careerpilot.backend.modules.application.repositories.ApplicationRecordRepository;
 import com.careerpilot.shared.events.ApplicationStatusChangedEvent;
@@ -14,11 +15,14 @@ public class TrackingAgent implements CareerAgent {
 
     private final ApplicationRecordRepository applicationRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final CareerAnalyticsService analyticsService;
 
     public TrackingAgent(ApplicationRecordRepository applicationRepository,
-                         ApplicationEventPublisher eventPublisher) {
+                         ApplicationEventPublisher eventPublisher,
+                         CareerAnalyticsService analyticsService) {
         this.applicationRepository = applicationRepository;
         this.eventPublisher = eventPublisher;
+        this.analyticsService = analyticsService;
     }
 
     @Override
@@ -38,24 +42,32 @@ public class TrackingAgent implements CareerAgent {
 
     @Override
     public List<String> getCapabilities() {
-        return List.of("STATUS_SYNCHRONIZATION", "INTERVIEW_SCHEDULING_MONITORING");
+        return List.of("STATUS_SYNCHRONIZATION", "INTERVIEW_SCHEDULING_MONITORING", "ANALYTICS_UPDATES");
     }
 
     @Override
     public List<String> getSupportedTaskTypes() {
-        return List.of("TRACKING");
+        return List.of("TRACKING", "TRACK_APPLICATION", "UPDATE_ANALYTICS");
     }
 
     @Override
     public AgentResult execute(AgentContext context, AgentTask task) {
         UUID userId = context.getUserId();
+        String type = task.getTaskType();
         
         try {
+            if ("UPDATE_ANALYTICS".equals(type)) {
+                analyticsService.calculateAndPersistAnalytics(userId, "MONTHLY");
+                return AgentResult.builder()
+                        .status(AgentResult.Status.SUCCESS)
+                        .message("Persisted and updated career progression analytics metrics.")
+                        .build();
+            }
+
             List<ApplicationRecord> apps = applicationRepository.findByCandidateIdOrderByCreatedAtDesc(userId);
             List<Map<String, Object>> statusList = new ArrayList<>();
             
             for (ApplicationRecord app : apps) {
-                // Fetch external status (Mocked as the current state)
                 String currentStatus = app.getWorkflowState().name();
                 
                 Map<String, Object> item = new HashMap<>();
@@ -64,7 +76,6 @@ public class TrackingAgent implements CareerAgent {
                 item.put("status", currentStatus);
                 statusList.add(item);
                 
-                // Publish Event
                 eventPublisher.publishEvent(ApplicationStatusChangedEvent.builder()
                         .eventId(UUID.randomUUID())
                         .timestamp(Instant.now())
@@ -89,7 +100,7 @@ public class TrackingAgent implements CareerAgent {
         } catch (Exception e) {
             return AgentResult.builder()
                     .status(AgentResult.Status.FAILED)
-                    .message("Failed to track applications: " + e.getMessage())
+                    .message("Failed executing tracking task " + type + ": " + e.getMessage())
                     .exception(e)
                     .build();
         }

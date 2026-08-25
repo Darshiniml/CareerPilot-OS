@@ -3,7 +3,6 @@ import { AppShell } from '../../components/layout/AppShell';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingState } from '../../components/ui/LoadingState';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { api } from '../../services/api';
 import { Play, RotateCcw, Check, X, ExternalLink, CheckCircle2 } from 'lucide-react';
 
@@ -22,6 +21,7 @@ interface Application {
 interface ApplicationDetails extends Application {
   jobTitle: string;
   companyName: string;
+  location: string;
   applyUrl?: string;
 }
 
@@ -38,6 +38,9 @@ export const Applications: React.FC = () => {
   const [targetState, setTargetState] = useState('INTERVIEW');
   const [statusReason, setStatusReason] = useState('');
 
+  const [timelineModalOpen, setTimelineModalOpen] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+
   const handleUpdateCandidateStatus = async () => {
     if (!statusAppId) return;
     try {
@@ -45,7 +48,7 @@ export const Applications: React.FC = () => {
         targetState,
         reason: statusReason || `Manually reported ${targetState} by user`
       });
-      alert(`Application status updated to ${targetState} (Manually reported by you).`);
+      alert(`Application status updated to ${targetState}.`);
       setStatusModalOpen(false);
       fetchApplicationsAndDetails();
     } catch (e) {
@@ -69,22 +72,34 @@ export const Applications: React.FC = () => {
     }
   };
 
+  const handleOpenTimelineModal = async (appId: string) => {
+    try {
+      const timelineRes = await api.get(`/applications/${appId}/timeline`);
+      setTimelineEvents(timelineRes.data || []);
+      setTimelineModalOpen(true);
+    } catch (e) {
+      console.error('Failed to load application timeline:', e);
+      alert('Could not load application timeline.');
+    }
+  };
+
   const fetchApplicationsAndDetails = async () => {
     try {
       const appsRes = await api.get('/applications');
       const appsList: Application[] = appsRes.data || [];
 
-      // Fetch corresponding job info for display
       const detailedApps = await Promise.all(
         appsList.map(async (app) => {
           let jobTitle = 'Software Engineer';
           let companyName = 'Enterprise Partner';
+          let location = 'Remote';
           let applyUrl = app.metadata?.applyUrl || '';
 
           try {
             const jobRes = await api.get(`/ai/job/${app.jobId}`);
             jobTitle = jobRes.data?.title || jobTitle;
             companyName = jobRes.data?.companyName || jobRes.data?.company || companyName;
+            location = jobRes.data?.location || location;
             if (!applyUrl && jobRes.data?.sourceUrl) {
               applyUrl = jobRes.data.sourceUrl;
             }
@@ -95,6 +110,7 @@ export const Applications: React.FC = () => {
             ...app,
             jobTitle,
             companyName,
+            location,
             applyUrl,
           };
         })
@@ -131,7 +147,7 @@ export const Applications: React.FC = () => {
 
   const triggerStateAction = async (id: string, action: string) => {
     try {
-      await api.post(`/applications/${id}/${action}`);
+      await api.post(`/applications/${id}/${action}`, { actorId: null });
       alert(`Action '${action}' triggered successfully!`);
       fetchApplicationsAndDetails();
     } catch (e) {
@@ -158,7 +174,6 @@ export const Applications: React.FC = () => {
       APPLICATION_BLOCKED_BY_DAILY_LIMIT: { label: 'Daily Limit Reached ⛔', variant: 'danger' },
       APPLICATION_FAILED: { label: 'Application Failed', variant: 'danger' },
       SUBMISSION_FAILED: { label: 'Submission Failed', variant: 'danger' },
-      SUBMISSION_UNVERIFIED: { label: 'Unverified Submission', variant: 'warning' },
       REJECTED: { label: 'Rejected', variant: 'danger' },
       RETRYING: { label: 'Retrying', variant: 'warning' },
       COMPLETED: { label: 'Completed', variant: 'success' },
@@ -166,6 +181,50 @@ export const Applications: React.FC = () => {
 
     const cfg = states[state] || { label: state, variant: 'neutral' as const };
     return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
+  };
+
+  const sections = [
+    'READY FOR REVIEW',
+    'HIGH PRIORITY',
+    'MANUAL ACTION REQUIRED',
+    'SUBMISSION IN PROGRESS',
+    'SUBMITTED',
+    'UNDER REVIEW',
+    'INTERVIEW',
+    'OFFER',
+    'REJECTED',
+    'FAILED'
+  ];
+
+  const getSectionApplications = (section: string) => {
+    return applications.filter((app) => {
+      const state = app.workflowState;
+      const matchPct = app.matchScore ? Math.round(app.matchScore * 100) : 0;
+      switch (section) {
+        case 'READY FOR REVIEW':
+          return state === 'READY_FOR_APPROVAL' || state === 'PENDING_APPROVAL' || state === 'APPLICATION_READY' || state === 'WAITING_APPROVAL';
+        case 'HIGH_PRIORITY':
+          return matchPct >= 80 && (state === 'DISCOVERED' || state === 'MATCHED' || state === 'ELIGIBLE' || state === 'READY' || state === 'APPLICATION_PREPARING');
+        case 'MANUAL_ACTION_REQUIRED':
+          return state === 'MANUAL_ACTION_REQUIRED' || state === 'UNSUPPORTED_CONNECTOR' || state === 'UNSUPPORTED_CONNECTOR_FALLBACK';
+        case 'SUBMISSION IN PROGRESS':
+          return state === 'SUBMITTING' || state === 'SUBMISSION_IN_PROGRESS' || state === 'APPROVED';
+        case 'SUBMITTED':
+          return state === 'SUBMITTED' || state === 'SUBMITTED_VERIFIED' || state === 'COMPLETED';
+        case 'UNDER REVIEW':
+          return state === 'UNDER_REVIEW' || state === 'ASSESSMENT';
+        case 'INTERVIEW':
+          return state === 'INTERVIEW';
+        case 'OFFER':
+          return state === 'OFFER';
+        case 'REJECTED':
+          return state === 'REJECTED' || state === 'REJECTED_BY_COMPANY' || state === 'WITHDRAWN' || state === 'ALREADY_APPLIED';
+        case 'FAILED':
+          return state === 'FAILED' || state === 'APPLICATION_FAILED' || state === 'SUBMISSION_FAILED' || state === 'RETRYING' || state === 'APPLICATION_BLOCKED_BY_DAILY_LIMIT';
+        default:
+          return false;
+      }
+    });
   };
 
   if (loading) {
@@ -200,153 +259,169 @@ export const Applications: React.FC = () => {
           </Card>
         </section>
 
-        {/* Workflow Table */}
-        <section className="space-y-4">
-          <h3 className="text-heading-sm font-normal text-jet-black">Active Application Records</h3>
+        {/* Grouped Workflow Queue sections */}
+        <section className="space-y-8">
+          {sections.map((sec) => {
+            const secApps = getSectionApplications(sec);
+            if (secApps.length === 0) return null;
 
-          {applications.length === 0 ? (
-            <EmptyState
-              title="No active applications"
-              description="Start job discovery and launch candidate automation workflows to track applications."
-            />
-          ) : (
-            <Card variant="white" className="overflow-x-auto p-0 border border-iron-gray/15">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-iron-gray/10 text-caption font-semibold text-slate uppercase bg-mist-gray/40 select-none">
-                    <th className="p-4 pl-6">Job Opportunity</th>
-                    <th className="p-4">Submission Mode & Status</th>
-                    <th className="p-4">Match Score</th>
-                    <th className="p-4">Created</th>
-                    <th className="p-4 pr-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-iron-gray/10">
-                  {applications.map((app) => (
-                    <tr key={app.applicationId} className="hover:bg-mist-gray/10 transition-all">
-                      {/* Name & Company */}
-                      <td className="p-4 pl-6">
-                        <p className="text-body-sm font-bold text-jet-black">{app.jobTitle}</p>
-                        <p className="text-caption text-slate">{app.companyName}</p>
-                      </td>
+            return (
+              <div key={sec} className="space-y-4">
+                <div className="flex items-center gap-2 border-b border-iron-gray/10 pb-2">
+                  <h3 className="text-subheading font-bold text-jet-black tracking-tight">{sec}</h3>
+                  <Badge variant="neutral">{secApps.length}</Badge>
+                </div>
 
-                      {/* Status */}
-                      <td className="p-4 space-y-1">
-                        <div>{getStatusBadge(app.workflowState)}</div>
-                        {app.submissionMethod && (
+                <div className="grid grid-cols-1 gap-4">
+                  {secApps.map((app) => (
+                    <Card key={app.applicationId} variant="white" className="border border-iron-gray/15 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div>
+                        <h4 className="text-body-sm font-bold text-jet-black">{app.jobTitle}</h4>
+                        <p className="text-caption text-slate mt-0.5">{app.companyName} · {app.location}</p>
+                        
+                        <div className="flex flex-wrap gap-2 mt-2 items-center">
+                          {getStatusBadge(app.workflowState)}
                           <span className="text-[11px] font-mono text-slate bg-iron-gray/10 px-1.5 py-0.5 rounded">
-                            Mode: {app.submissionMethod}
+                            Match Score: {app.matchScore ? `${Math.round(app.matchScore * 100)}%` : '—'}
                           </span>
-                        )}
-                      </td>
-
-                      {/* Score */}
-                      <td className="p-4">
-                        <span className="text-body-sm font-semibold text-jet-black">
-                          {app.matchScore ? `${Math.round(app.matchScore * 100)}%` : '—'}
-                        </span>
-                      </td>
-
-                      {/* Date */}
-                      <td className="p-4 text-caption text-slate">
-                        {new Date(app.createdAt).toLocaleDateString()}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="p-4 pr-6 text-right">
-                        <div className="flex justify-end items-center gap-2">
-                          <button
-                            onClick={() => { setStatusAppId(app.applicationId); setStatusModalOpen(true); }}
-                            title="Report Manual Status Update"
-                            className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
-                          >
-                            Update Status
-                          </button>
-                          <button
-                            onClick={() => handleOpenPackageModal(app.applicationId)}
-                            title="Review Decision & Application Package"
-                            className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
-                          >
-                            Review Package
-                          </button>
-                          {app.workflowState === 'MANUAL_ACTION_REQUIRED' && app.applyUrl && (
-                            <a
-                              href={app.applyUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-all"
-                            >
-                              Open Official Application
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          )}
-                          {(app.workflowState === 'READY_FOR_APPROVAL' || app.workflowState === 'PENDING_APPROVAL') && (
-                            <>
-                              <button
-                                onClick={() => triggerStateAction(app.applicationId, 'approve')}
-                                title="Approve Submission"
-                                className="p-1.5 rounded bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 transition-all"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => triggerStateAction(app.applicationId, 'reject')}
-                                title="Reject Submission"
-                                className="p-1.5 rounded bg-red-500/10 text-red-700 hover:bg-red-500/20 transition-all"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
-                          {app.workflowState === 'APPROVED' && (
-                            <button
-                              onClick={() => triggerStateAction(app.applicationId, 'submit')}
-                              title="Submit Application"
-                              className="px-3 py-1.5 text-xs font-semibold rounded bg-jet-black text-white hover:bg-charcoal transition-all inline-flex items-center gap-1"
-                            >
-                              <Play className="w-3.5 h-3.5" />
-                              Submit
-                            </button>
-                          )}
-                          {(app.workflowState === 'SUBMISSION_FAILED' || app.workflowState === 'APPLICATION_FAILED' || app.workflowState === 'FAILED') && (
-                            <button
-                              onClick={() => triggerStateAction(app.applicationId, 'retry')}
-                              title="Retry Submission"
-                              className="p-1.5 rounded bg-mist-gray text-jet-black hover:bg-iron-gray/10 border border-iron-gray/15 transition-all"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          )}
-                          {app.workflowState === 'SUBMITTED_VERIFIED' && (
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-500/10 px-2 py-1 rounded">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                          {app.submissionMethod && (
+                            <span className="text-[11px] font-mono text-slate bg-iron-gray/10 px-1.5 py-0.5 rounded">
+                              Mode: {app.submissionMethod}
                             </span>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+
+                      {/* Right Hand Actions */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2 md:mt-0 ml-auto">
+                        <button
+                          onClick={() => handleOpenTimelineModal(app.applicationId)}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
+                        >
+                          Timeline
+                        </button>
+                        <button
+                          onClick={() => { setStatusAppId(app.applicationId); setStatusModalOpen(true); }}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
+                        >
+                          Update Status
+                        </button>
+                        <button
+                          onClick={() => handleOpenPackageModal(app.applicationId)}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded bg-mist-gray hover:bg-iron-gray/10 text-jet-black border border-iron-gray/20 transition-all"
+                        >
+                          Review Package
+                        </button>
+
+                        {(app.workflowState === 'MANUAL_ACTION_REQUIRED' || app.workflowState === 'UNSUPPORTED_CONNECTOR') && app.applyUrl && (
+                          <a
+                            href={app.applyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-all"
+                          >
+                            Open Official Apply
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+
+                        {(app.workflowState === 'READY_FOR_APPROVAL' || app.workflowState === 'PENDING_APPROVAL') && (
+                          <>
+                            <button
+                              onClick={() => triggerStateAction(app.applicationId, 'approve')}
+                              className="p-1.5 rounded bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 transition-all"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => triggerStateAction(app.applicationId, 'reject')}
+                              className="p-1.5 rounded bg-red-500/10 text-red-700 hover:bg-red-500/20 transition-all"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+
+                        {app.workflowState === 'APPROVED' && (
+                          <button
+                            onClick={() => triggerStateAction(app.applicationId, 'submit')}
+                            className="px-3 py-1.5 text-xs font-semibold rounded bg-jet-black text-white hover:bg-charcoal transition-all inline-flex items-center gap-1"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                            Submit
+                          </button>
+                        )}
+
+                        {(app.workflowState === 'SUBMISSION_FAILED' || app.workflowState === 'APPLICATION_FAILED' || app.workflowState === 'FAILED') && (
+                          <button
+                            onClick={() => triggerStateAction(app.applicationId, 'retry')}
+                            className="p-1.5 rounded bg-mist-gray text-jet-black hover:bg-iron-gray/10 border border-iron-gray/15 transition-all"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {app.workflowState === 'SUBMITTED_VERIFIED' && (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-500/10 px-2 py-1 rounded">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                          </span>
+                        )}
+                      </div>
+                    </Card>
                   ))}
-                </tbody>
-              </table>
-            </Card>
-          )}
+                </div>
+              </div>
+            );
+          })}
         </section>
 
-        {/* Decision & Package Workspace Modal */}
+        {/* Timeline Modal */}
+        {timelineModalOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-iron-gray/20">
+              <div className="flex justify-between items-start border-b border-iron-gray/10 pb-4">
+                <h3 className="text-subheading font-bold text-jet-black">Workflow Transition Timeline</h3>
+                <button onClick={() => setTimelineModalOpen(false)} className="p-1 text-slate hover:text-jet-black">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto space-y-3">
+                {timelineEvents.map((ev: any, index: number) => (
+                  <div key={index} className="flex gap-3 text-body-sm">
+                    <div className="w-2 h-2 rounded-full bg-indigo-600 mt-1.5" />
+                    <div>
+                      <p className="font-bold text-jet-black">{ev.state}</p>
+                      <p className="text-xs text-slate mt-0.5">{ev.reason || 'State transition'}</p>
+                      <p className="text-[10px] text-ash-gray mt-0.5">{new Date(ev.timestamp).toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-4 border-t border-iron-gray/10">
+                <button onClick={() => setTimelineModalOpen(false)} className="px-4 py-2 bg-jet-black text-white text-xs font-semibold rounded hover:bg-charcoal transition-all">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Decision & Package Modal */}
         {modalOpen && activeDecision && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-iron-gray/20 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-start border-b border-iron-gray/10 pb-4">
                 <div>
                   <h3 className="text-subheading font-bold text-jet-black">Application Decision & Package</h3>
-                  <span className="text-caption text-slate">Evaluated from real candidate profile, matching engine & company intelligence</span>
+                  <span className="text-caption text-slate">Evaluated from real candidate profile & live intelligence</span>
                 </div>
                 <button onClick={() => setModalOpen(false)} className="p-1 text-slate hover:text-jet-black">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Recommendation Badge & Rationale */}
               <div className="p-4 rounded-lg bg-mist-gray/50 border border-iron-gray/15 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="text-caption uppercase font-semibold text-slate">Recommendation:</span>
@@ -361,16 +436,13 @@ export const Applications: React.FC = () => {
                 <p className="text-body-sm text-jet-black font-medium">{activeDecision.decisionRationale}</p>
               </div>
 
-              {/* Selected Resume */}
               <div className="space-y-2">
                 <h4 className="text-caption uppercase font-semibold text-slate">Selected Resume Version</h4>
                 <div className="p-3 bg-white rounded border border-iron-gray/20 flex justify-between items-center">
                   <span className="text-body-sm font-bold text-jet-black">{activeDecision.recommendedResumeTitle || 'Default Resume'}</span>
-                  <span className="text-xs text-slate">Resume ID: {activeDecision.recommendedResumeId ? String(activeDecision.recommendedResumeId).substring(0, 8) + '...' : 'Primary'}</span>
                 </div>
               </div>
 
-              {/* Official Apply URL */}
               {activePackage?.officialApplyUrl && (
                 <div className="p-4 bg-indigo-50/50 rounded-lg border border-indigo-100 flex items-center justify-between">
                   <div>
@@ -397,7 +469,7 @@ export const Applications: React.FC = () => {
           </div>
         )}
 
-        {/* Candidate Manual Status Update Modal */}
+        {/* Status Update Modal */}
         {statusModalOpen && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-iron-gray/20">
@@ -419,12 +491,11 @@ export const Applications: React.FC = () => {
                     onChange={(e) => setTargetState(e.target.value)}
                     className="w-full p-2.5 rounded-lg border border-iron-gray/20 text-body-sm font-semibold text-jet-black bg-mist-gray/30"
                   >
-                    <option value="UNDER_REVIEW">UNDER_REVIEW (Recruiter reviewing profile)</option>
-                    <option value="ASSESSMENT">ASSESSMENT (Technical screening test)</option>
-                    <option value="INTERVIEW">INTERVIEW (Interview scheduled / in progress)</option>
-                    <option value="OFFER">OFFER (Job offer extended)</option>
-                    <option value="REJECTED">REJECTED (Application rejected by company)</option>
-                    <option value="WITHDRAWN">WITHDRAWN (Withdrawn by candidate)</option>
+                    <option value="UNDER_REVIEW">UNDER_REVIEW</option>
+                    <option value="ASSESSMENT">ASSESSMENT</option>
+                    <option value="INTERVIEW">INTERVIEW</option>
+                    <option value="OFFER">OFFER</option>
+                    <option value="REJECTED">REJECTED</option>
                   </select>
                 </div>
 
@@ -434,7 +505,7 @@ export const Applications: React.FC = () => {
                     rows={3}
                     value={statusReason}
                     onChange={(e) => setStatusReason(e.target.value)}
-                    placeholder="e.g. Received interview invitation email from recruiter..."
+                    placeholder="Notes..."
                     className="w-full p-2.5 rounded-lg border border-iron-gray/20 text-body-sm text-jet-black bg-white"
                   />
                 </div>

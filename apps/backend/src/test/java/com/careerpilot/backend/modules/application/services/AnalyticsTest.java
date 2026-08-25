@@ -7,6 +7,7 @@ import org.mockito.Mockito;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,7 +37,7 @@ class AnalyticsTest {
                 null
         );
 
-        Map<String, Object> result = service.statistics();
+        Map<String, Object> result = service.statistics(UUID.randomUUID());
 
         assertThat(result).containsKey("applicationsSubmitted");
     }

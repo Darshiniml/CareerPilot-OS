@@ -72,7 +72,7 @@ public class JobDiscoveryAgent implements CareerAgent {
 
     @Override
     public List<String> getSupportedTaskTypes() {
-        return List.of("JOB_DISCOVERY");
+        return List.of("JOB_DISCOVERY", "DISCOVER_NEW_JOBS");
     }
 
     @Override
@@ -199,25 +199,10 @@ public class JobDiscoveryAgent implements CareerAgent {
                 if (!active.isEmpty()) defaultResume = Optional.of(active.get(0));
             }
             defaultResume.ifPresent(r -> {
-                if (r.getOriginalFilename() != null) {
-                    keywords.add("Software Engineer");
-                }
+                // Resume-derived search terms are supplied by the analyzed resume cache.
+                // A filename is not reliable candidate profile data.
             });
         } catch (Exception ignored) {}
-
-        // Defaults if candidate profile is not populated yet
-        if (roles.isEmpty()) {
-            roles.addAll(List.of("Software Developer", "Backend Developer", "Java Developer"));
-        }
-        if (keywords.isEmpty()) {
-            keywords.addAll(List.of("Java", "Spring Boot", "Software Engineer", "Backend Developer", "React", "Python"));
-        }
-        if (skills.isEmpty()) {
-            skills.addAll(List.of("Java", "Spring Boot", "React", "MySQL", "Python"));
-        }
-        if (locations.isEmpty()) {
-            locations.addAll(List.of("Bangalore", "Remote"));
-        }
 
         return JobSearchCriteria.builder()
                 .keywords(new ArrayList<>(keywords))

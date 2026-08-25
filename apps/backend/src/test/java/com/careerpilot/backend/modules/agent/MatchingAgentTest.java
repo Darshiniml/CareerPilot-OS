@@ -23,9 +23,11 @@ public class MatchingAgentTest {
         JobIntelligenceCacheRepository jobCacheRepository = mock(JobIntelligenceCacheRepository.class);
         CompanyIntelligenceCacheRepository companyCacheRepository = mock(CompanyIntelligenceCacheRepository.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        com.careerpilot.backend.modules.agent.services.JobDiscoveryAgent jobDiscoveryAgent = mock(com.careerpilot.backend.modules.agent.services.JobDiscoveryAgent.class);
+        com.careerpilot.backend.modules.opportunity.services.OpportunityPrioritizationService prioritizationService = mock(com.careerpilot.backend.modules.opportunity.services.OpportunityPrioritizationService.class);
 
         MatchingAgent agent = new MatchingAgent(
-                jobDiscoveryService, matchingEngine, dataCollector, jobCacheRepository, companyCacheRepository, eventPublisher);
+                jobDiscoveryService, matchingEngine, dataCollector, jobCacheRepository, companyCacheRepository, eventPublisher, jobDiscoveryAgent, prioritizationService);
 
         UUID userId = UUID.randomUUID();
         when(dataCollector.collectCandidateData(userId)).thenReturn(new HashMap<>()); // Returns empty candidateData

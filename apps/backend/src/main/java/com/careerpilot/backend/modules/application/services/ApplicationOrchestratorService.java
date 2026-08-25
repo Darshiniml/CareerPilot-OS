@@ -259,16 +259,25 @@ public class ApplicationOrchestratorService {
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> statistics() {
+    public Map<String, Object> statistics(UUID candidateId) {
+        List<ApplicationRecord> applications = applicationRepository.findAll().stream()
+                .filter(application -> candidateId.equals(application.getCandidateId()))
+                .toList();
+        long total = applications.size();
+        long submitted = applications.stream().filter(application -> application.getWorkflowState() == WorkflowState.SUBMITTED || application.getWorkflowState() == WorkflowState.SUBMITTED_VERIFIED).count();
+        long approved = applications.stream().filter(application -> application.getWorkflowState() == WorkflowState.APPROVED).count();
+        long failed = applications.stream().filter(application -> application.getWorkflowState() == WorkflowState.APPLICATION_FAILED || application.getWorkflowState() == WorkflowState.SUBMISSION_FAILED || application.getWorkflowState() == WorkflowState.FAILED).count();
+        long interviews = applications.stream().filter(application -> application.getWorkflowState() == WorkflowState.INTERVIEW).count();
+        long offers = applications.stream().filter(application -> application.getWorkflowState() == WorkflowState.OFFER).count();
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("applicationsSubmitted", applicationRepository.countByWorkflowState(WorkflowState.SUBMITTED_VERIFIED) + applicationRepository.countByWorkflowState(WorkflowState.SUBMITTED));
-        stats.put("approvalRate", 0.0);
-        stats.put("submissionSuccessRate", 0.0);
-        stats.put("failureRate", 0.0);
-        stats.put("interviewRate", 0.0);
-        stats.put("offerRate", 0.0);
-        stats.put("averageMatchScore", 0.0);
-        stats.put("averageTimeToSubmit", 0.0);
+        stats.put("applicationsSubmitted", submitted);
+        stats.put("approvalRate", total == 0 ? null : ((double) approved / total) * 100);
+        stats.put("submissionSuccessRate", total == 0 ? null : ((double) submitted / total) * 100);
+        stats.put("failureRate", total == 0 ? null : ((double) failed / total) * 100);
+        stats.put("interviewRate", total == 0 ? null : ((double) interviews / total) * 100);
+        stats.put("offerRate", total == 0 ? null : ((double) offers / total) * 100);
+        stats.put("averageMatchScore", null);
+        stats.put("averageTimeToSubmit", null);
         stats.put("connectorPerformance", new HashMap<>());
         return stats;
     }

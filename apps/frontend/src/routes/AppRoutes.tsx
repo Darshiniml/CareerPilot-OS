@@ -9,6 +9,7 @@ import { Resumes } from '../features/resumes/Resumes';
 import { Jobs } from '../features/jobs/Jobs';
 import { Matching } from '../features/matching/Matching';
 import { Applications } from '../features/applications/Applications';
+import { OpportunityWorkspace } from '../features/opportunities/OpportunityWorkspace';
 import { Interviews } from '../features/interviews/Interviews';
 import { Learning } from '../features/learning/Learning';
 import { Copilot } from '../features/copilot/Copilot';
@@ -60,6 +61,14 @@ export const AppRoutes: React.FC = () => {
           element={
             <ProtectedRoute>
               <Jobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/opportunities"
+          element={
+            <ProtectedRoute>
+              <OpportunityWorkspace />
             </ProtectedRoute>
           }
         />

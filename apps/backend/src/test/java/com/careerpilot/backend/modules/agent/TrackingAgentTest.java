@@ -15,8 +15,9 @@ public class TrackingAgentTest {
     public void testTrackingAgentSuccess() {
         ApplicationRecordRepository applicationRepository = mock(ApplicationRecordRepository.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+        com.careerpilot.backend.modules.analytics.services.CareerAnalyticsService analyticsService = mock(com.careerpilot.backend.modules.analytics.services.CareerAnalyticsService.class);
 
-        TrackingAgent agent = new TrackingAgent(applicationRepository, eventPublisher);
+        TrackingAgent agent = new TrackingAgent(applicationRepository, eventPublisher, analyticsService);
 
         UUID userId = UUID.randomUUID();
         when(applicationRepository.findByCandidateIdOrderByCreatedAtDesc(userId)).thenReturn(List.of());

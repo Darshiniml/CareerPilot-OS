@@ -38,7 +38,7 @@ public class AgentExecutionServiceTest {
         assertNotNull(workflow);
         assertEquals(userId, workflow.getUserId());
         assertEquals(AgentWorkflowStatus.RUNNING, workflow.getStatus());
-        verify(taskRepository, times(9)).save(any(AgentTask.class));
+        verify(taskRepository, times(11)).save(any(AgentTask.class));
     }
 
     @Test

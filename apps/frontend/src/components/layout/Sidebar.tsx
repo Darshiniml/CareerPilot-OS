@@ -16,7 +16,8 @@ import {
   Cpu,
   LogOut,
   Plane,
-  X
+  X,
+  Award
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
     { name: 'Profile', path: '/profile', icon: User },
     { name: 'Resumes', path: '/resumes', icon: FileText },
     { name: 'Jobs', path: '/jobs', icon: Briefcase },
+    { name: 'Opportunities', path: '/opportunities', icon: Award },
     { name: 'AI Matching', path: '/matching', icon: Target },
     { name: 'Applications', path: '/applications', icon: Send },
     { name: 'Interviews', path: '/interviews', icon: Video },

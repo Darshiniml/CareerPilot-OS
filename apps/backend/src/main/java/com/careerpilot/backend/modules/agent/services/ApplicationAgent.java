@@ -5,6 +5,7 @@ import com.careerpilot.backend.modules.application.domain.ApplicationRecord;
 import com.careerpilot.backend.modules.application.services.ApplicationOrchestratorService;
 import com.careerpilot.backend.modules.application.services.EligibilityEngine;
 import com.careerpilot.backend.modules.application.services.ResumeSelectionEngine;
+import com.careerpilot.backend.modules.application.services.SubmissionPreflightService;
 import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob;
 import com.careerpilot.backend.modules.discovery.services.JobDiscoveryService;
 import com.careerpilot.backend.modules.discovery.services.ConnectorRegistry;
@@ -13,10 +14,10 @@ import com.careerpilot.backend.modules.resume.domain.ResumeVersion;
 import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
 import com.careerpilot.backend.modules.resume.repositories.ResumeVersionRepository;
 import com.careerpilot.shared.events.ApplicationPreparedEvent;
-import com.careerpilot.shared.events.ApplicationSubmittedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+
 import java.time.Instant;
 import java.util.*;
 
@@ -30,19 +31,22 @@ public class ApplicationAgent implements CareerAgent {
     private final ResumeVersionRepository resumeVersionRepository;
     private final ApplicationOrchestratorService applicationOrchestratorService;
     private final ApplicationEventPublisher eventPublisher;
+    private final SubmissionPreflightService preflightService;
 
     public ApplicationAgent(JobDiscoveryService jobDiscoveryService,
                              ConnectorRegistry connectorRegistry,
                              ResumeRepository resumeRepository,
                              ResumeVersionRepository resumeVersionRepository,
                              ApplicationOrchestratorService applicationOrchestratorService,
-                             ApplicationEventPublisher eventPublisher) {
+                             ApplicationEventPublisher eventPublisher,
+                             SubmissionPreflightService preflightService) {
         this.jobDiscoveryService = jobDiscoveryService;
         this.connectorRegistry = connectorRegistry;
         this.resumeRepository = resumeRepository;
         this.resumeVersionRepository = resumeVersionRepository;
         this.applicationOrchestratorService = applicationOrchestratorService;
         this.eventPublisher = eventPublisher;
+        this.preflightService = preflightService;
     }
 
     @Override
@@ -62,142 +66,144 @@ public class ApplicationAgent implements CareerAgent {
 
     @Override
     public List<String> getCapabilities() {
-        return List.of("ELIGIBILITY_CHECK", "RESUME_SELECTION", "CONNECTOR_DISPATCH");
+        return List.of("ELIGIBILITY_CHECK", "RESUME_SELECTION", "CONNECTOR_DISPATCH", "PREFLIGHT_CHECKS");
     }
 
     @Override
     public List<String> getSupportedTaskTypes() {
-        return List.of("APPLICATION_PREPARATION");
+        return List.of("APPLICATION_PREPARATION", "PREPARE_APPLICATION", "CHECK_PRE_FLIGHT", "WAIT_FOR_APPROVAL_OR_MANUAL_ACTION");
     }
 
     @Override
     public AgentResult execute(AgentContext context, AgentTask task) {
         UUID userId = context.getUserId();
         AgentPolicy policy = context.getPolicy();
-        
+        String type = task.getTaskType();
+
         try {
-            // 1. Fetch default active resume
-            Optional<Resume> defaultResume = resumeRepository.findDefaultByUserId(userId);
-            if (defaultResume.isEmpty()) {
-                List<Resume> activeResumes = resumeRepository.findActiveByUserId(userId);
-                if (!activeResumes.isEmpty()) {
-                    defaultResume = Optional.of(activeResumes.get(0));
+            if ("CHECK_PRE_FLIGHT".equals(type)) {
+                List<ApplicationRecord> apps = applicationOrchestratorService.listApplications().stream()
+                        .filter(a -> a.getCandidateId().equals(userId))
+                        .toList();
+
+                List<Map<String, Object>> checks = new ArrayList<>();
+                for (ApplicationRecord app : apps) {
+                    SubmissionPreflightService.PreflightResult res = preflightService.evaluatePreflight(app, userId);
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("applicationId", app.getApplicationId().toString());
+                    item.put("passed", res.isAllowed());
+                    List<String> details = new ArrayList<>();
+                    if (res.getChecks() != null) {
+                        for (SubmissionPreflightService.CheckResult cr : res.getChecks()) {
+                            details.add(cr.getName() + ": " + cr.getDetails() + " (" + cr.isPassed() + ")");
+                        }
+                    }
+                    item.put("reasons", details);
+                    checks.add(item);
                 }
-            }
-            
-            if (defaultResume.isEmpty()) {
-                log.warn("[APPLICATION-AGENT] No active resume available for userId={}", userId);
+
+                Map<String, Object> output = new HashMap<>();
+                output.put("preflightChecks", checks);
+
                 return AgentResult.builder()
-                        .status(AgentResult.Status.FAILED)
-                        .message("No active resume available for application preparation.")
+                        .status(AgentResult.Status.SUCCESS)
+                        .message("Checked preflight criteria for " + apps.size() + " applications.")
+                        .outputData(output)
+                        .build();
+
+            } else if ("WAIT_FOR_APPROVAL_OR_MANUAL_ACTION".equals(type)) {
+                return AgentResult.builder()
+                        .status(AgentResult.Status.SUCCESS)
+                        .message("Applications prepared and matching user approval/manual safety profiles.")
+                        .build();
+
+            } else {
+                // APPLICATION_PREPARATION / PREPARE_APPLICATION
+                Optional<Resume> defaultResume = resumeRepository.findDefaultByUserId(userId);
+                if (defaultResume.isEmpty()) {
+                    List<Resume> activeResumes = resumeRepository.findActiveByUserId(userId);
+                    if (!activeResumes.isEmpty()) {
+                        defaultResume = Optional.of(activeResumes.get(0));
+                    }
+                }
+
+                if (defaultResume.isEmpty()) {
+                    log.warn("[APPLICATION-AGENT] No active resume available for userId={}", userId);
+                    return AgentResult.builder()
+                            .status(AgentResult.Status.FAILED)
+                            .message("No active resume available for application preparation.")
+                            .build();
+                }
+
+                Resume resume = defaultResume.get();
+                List<ResumeVersion> versions = resumeVersionRepository.findByResumeIdOrderByVersionNumberDesc(resume.getId());
+                if (versions.isEmpty()) {
+                    return AgentResult.builder()
+                            .status(AgentResult.Status.FAILED)
+                            .message("No active resume versions found.")
+                            .build();
+                }
+                ResumeVersion version = versions.get(0);
+
+                List<DiscoveryJob> jobs = jobDiscoveryService.jobs();
+                List<Map<String, Object>> preparedApps = new ArrayList<>();
+
+                for (DiscoveryJob job : jobs) {
+                    String connectorId = job.getConnectorId() != null ? job.getConnectorId() : "local-jobs";
+
+                    try {
+                        connectorRegistry.get(connectorId);
+                    } catch (Exception e) {
+                        log.warn("[APPLICATION-AGENT] Connector {} not active for job {}, continuing with fallback.", connectorId, job.getId());
+                        connectorId = "manual-fallback";
+                    }
+
+                    Map<String, Object> metadata = new HashMap<>();
+                    metadata.put("source", "autonomous-workflow");
+                    metadata.put("applyUrl", job.getSourceUrl() != null ? job.getSourceUrl() : "");
+
+                    ApplicationRecord appRecord;
+                    try {
+                        appRecord = applicationOrchestratorService.createApplication(
+                                userId,
+                                UUID.randomUUID(),
+                                job.getId(),
+                                connectorId,
+                                metadata
+                        );
+                    } catch (IllegalArgumentException e) {
+                        continue;
+                    }
+
+                    SubmissionPreflightService.PreflightResult preflight = preflightService.evaluatePreflight(appRecord, userId);
+
+                    Map<String, Object> pApp = new HashMap<>();
+                    pApp.put("applicationId", appRecord.getApplicationId().toString());
+                    pApp.put("jobId", job.getId().toString());
+                    pApp.put("title", job.getTitle());
+                    pApp.put("company", job.getCompany());
+                    pApp.put("workflowState", appRecord.getWorkflowState().name());
+                    pApp.put("preflightAllowed", preflight.isAllowed());
+                    preparedApps.add(pApp);
+                }
+
+                Map<String, Object> outputData = new HashMap<>();
+                outputData.put("applications", preparedApps);
+                outputData.put("count", preparedApps.size());
+
+                return AgentResult.builder()
+                        .status(AgentResult.Status.SUCCESS)
+                        .message("Prepared " + preparedApps.size() + " job applications (Automatic submission = " +
+                                (policy != null && policy.getAllowAutomaticSubmission()) + ")")
+                        .outputData(outputData)
                         .build();
             }
-            
-            Resume resume = defaultResume.get();
-            List<ResumeVersion> versions = resumeVersionRepository.findByResumeIdOrderByVersionNumberDesc(resume.getId());
-            if (versions.isEmpty()) {
-                return AgentResult.builder()
-                        .status(AgentResult.Status.FAILED)
-                        .message("No active resume versions found.")
-                        .build();
-            }
-            ResumeVersion version = versions.get(0);
-            
-            // 2. Fetch matched jobs
-            List<DiscoveryJob> jobs = jobDiscoveryService.jobs();
-            List<Map<String, Object>> preparedApps = new ArrayList<>();
-            
-            for (DiscoveryJob job : jobs) {
-                String connectorId = job.getConnectorId() != null ? job.getConnectorId() : "local-jobs";
-                
-                // 3. Resolve connector safely
-                try {
-                    connectorRegistry.get(connectorId);
-                } catch (Exception e) {
-                    log.warn("[APPLICATION-AGENT] Connector {} not active for job {}, continuing with fallback.", connectorId, job.getId());
-                    connectorId = "manual-fallback";
-                }
-                
-                // 4. Create application record
-                Map<String, Object> metadata = new HashMap<>();
-                metadata.put("source", "autonomous-workflow");
-                metadata.put("applyUrl", job.getSourceUrl() != null ? job.getSourceUrl() : "");
-                
-                ApplicationRecord appRecord;
-                try {
-                    appRecord = applicationOrchestratorService.createApplication(
-                            userId,
-                            UUID.randomUUID(),
-                            job.getId(),
-                            connectorId,
-                            metadata
-                    );
-                } catch (IllegalArgumentException e) {
-                    // Skip duplicate creation gracefully
-                    continue;
-                }
-                
-                // 5. Evaluate and prepare
-                EligibilityEngine.Request eligibilityRequest = new EligibilityEngine.Request(
-                        85.0, 70.0, List.of("java"), List.of("java", "spring"),
-                        2.0, 3.0, true, true, true, true, false, true
-                );
-                
-                ResumeSelectionEngine.Candidate selectionCand = new ResumeSelectionEngine.Candidate(
-                        resume, version, 85.0, Set.of("java"), "backend"
-                );
-                
-                appRecord = applicationOrchestratorService.evaluateAndPrepare(
-                        appRecord.getApplicationId(),
-                        eligibilityRequest,
-                        List.of(selectionCand),
-                        null,
-                        metadata
-                );
-                
-                // Publish Prepared event
-                eventPublisher.publishEvent(ApplicationPreparedEvent.builder()
-                        .eventId(UUID.randomUUID())
-                        .timestamp(Instant.now())
-                        .correlationId(UUID.fromString(context.getCorrelationId()))
-                        .workflowId(context.getWorkflowId())
-                        .userId(userId)
-                        .jobId(job.getId())
-                        .build());
-                
-                // 6. Submit only if user policy allows automatic submission
-                boolean submitted = false;
-                if (policy != null && policy.getAllowAutomaticSubmission()) {
-                    appRecord = applicationOrchestratorService.submit(appRecord.getApplicationId(), userId, "127.0.0.1");
-                    submitted = appRecord.getWorkflowState().name().contains("SUBMITTED");
-                }
-                
-                Map<String, Object> pApp = new HashMap<>();
-                pApp.put("applicationId", appRecord.getApplicationId().toString());
-                pApp.put("jobId", job.getId().toString());
-                pApp.put("title", job.getTitle());
-                pApp.put("company", job.getCompany());
-                pApp.put("workflowState", appRecord.getWorkflowState().name());
-                pApp.put("submittedAutomatically", submitted);
-                preparedApps.add(pApp);
-            }
-            
-            Map<String, Object> outputData = new HashMap<>();
-            outputData.put("applications", preparedApps);
-            outputData.put("count", preparedApps.size());
-            
-            return AgentResult.builder()
-                    .status(AgentResult.Status.SUCCESS)
-                    .message("Prepared " + preparedApps.size() + " job applications (Automatic submission = " + 
-                             (policy != null && policy.getAllowAutomaticSubmission()) + ")")
-                    .outputData(outputData)
-                    .build();
-            
+
         } catch (Exception e) {
-            log.error("[APPLICATION-AGENT] Failed during application preparation: {}", e.getMessage(), e);
+            log.error("[APPLICATION-AGENT] Failed during application execution: {}", e.getMessage(), e);
             return AgentResult.builder()
                     .status(AgentResult.Status.FAILED)
-                    .message("Failed during application preparation: " + e.getMessage())
+                    .message("Failed during execution: " + e.getMessage())
                     .exception(e)
                     .build();
         }

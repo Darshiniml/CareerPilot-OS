@@ -45,15 +45,17 @@ public class AgentExecutionService {
 
         // Define workflow tasks in order of execution priority
         String[] taskTypes = {
-                "RESUME_ANALYSIS",
-                "JOB_DISCOVERY",
-                "COMPANY_RESEARCH",
-                "JOB_MATCHING",
-                "REFERENCE_RESEARCH",
-                "APPLICATION_PREPARATION",
-                "VERIFICATION",
-                "TRACKING",
-                "NOTIFICATION"
+                "DISCOVER_NEW_JOBS",
+                "FILTER_PERSONALIZED_JOBS",
+                "MATCH_CANDIDATE",
+                "CALCULATE_HISTORICAL_SIGNAL",
+                "PRIORITIZE_OPPORTUNITIES",
+                "RESEARCH_COMPANIES",
+                "PREPARE_APPLICATION",
+                "CHECK_PRE_FLIGHT",
+                "WAIT_FOR_APPROVAL_OR_MANUAL_ACTION",
+                "TRACK_APPLICATION",
+                "UPDATE_ANALYTICS"
         };
 
         int priority = 100;

@@ -47,7 +47,7 @@ public class CompanyResearchAgent implements CareerAgent {
 
     @Override
     public List<String> getSupportedTaskTypes() {
-        return List.of("COMPANY_RESEARCH");
+        return List.of("COMPANY_RESEARCH", "RESEARCH_COMPANIES");
     }
 
     @Override
