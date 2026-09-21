@@ -2,8 +2,12 @@ package com.careerpilot.backend.modules.agent.services;
 
 import com.careerpilot.backend.modules.agent.domain.*;
 import com.careerpilot.backend.modules.application.domain.PlatformNotification;
+import com.careerpilot.backend.modules.application.domain.ApplicationRecord;
+import com.careerpilot.backend.modules.application.repositories.ApplicationRecordRepository;
 import com.careerpilot.backend.modules.application.repositories.PlatformNotificationRepository;
 import com.careerpilot.shared.events.CareerAutomationCompletedEvent;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import java.time.Instant;
@@ -13,12 +17,18 @@ import java.util.*;
 public class NotificationAgent implements CareerAgent {
 
     private final PlatformNotificationRepository notificationRepository;
+    private final ApplicationRecordRepository applicationRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     public NotificationAgent(PlatformNotificationRepository notificationRepository,
-                             ApplicationEventPublisher eventPublisher) {
+                             ApplicationRecordRepository applicationRepository,
+                             ApplicationEventPublisher eventPublisher,
+                             ObjectMapper objectMapper) {
         this.notificationRepository = notificationRepository;
+        this.applicationRepository = applicationRepository;
         this.eventPublisher = eventPublisher;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -51,11 +61,18 @@ public class NotificationAgent implements CareerAgent {
         UUID userId = context.getUserId();
         
         try {
+            UUID applicationId = applicationIdFor(task, userId);
+            if (applicationId == null) {
+                return AgentResult.builder()
+                        .status(AgentResult.Status.FAILED)
+                        .message("Notification task requires an application owned by the candidate.")
+                        .build();
+            }
             // 1. Save Platform Notification record
             PlatformNotification platformNotif = PlatformNotification.builder()
                     .id(UUID.randomUUID())
                     .candidateId(userId)
-                    .applicationId(UUID.randomUUID()) // dummy reference
+                    .applicationId(applicationId)
                     .type("PLATFORM")
                     .title("Career Automation Complete")
                     .message("The autonomous career search workflow completed successfully. Evaluated discovery and matched listings.")
@@ -95,5 +112,20 @@ public class NotificationAgent implements CareerAgent {
     @Override
     public AgentStatus getHealthStatus() {
         return AgentStatus.HEALTHY;
+    }
+
+    private UUID applicationIdFor(AgentTask task, UUID userId) throws Exception {
+        if (task.getPayloadJson() == null || task.getPayloadJson().isBlank()) {
+            return null;
+        }
+        JsonNode applicationId = objectMapper.readTree(task.getPayloadJson()).path("applicationId");
+        if (applicationId.isMissingNode() || applicationId.asText().isBlank()) {
+            return null;
+        }
+        ApplicationRecord application = applicationRepository.findById(UUID.fromString(applicationId.asText()))
+                .orElse(null);
+        return application != null && userId.equals(application.getCandidateId())
+                ? application.getApplicationId()
+                : null;
     }
 }

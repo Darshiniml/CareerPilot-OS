@@ -66,7 +66,9 @@ def main():
     seed_job = jobs[0]
     request("PUT", "/profile/preferences", {
         "workStyle": seed_job.get("workMode") or "FLEXIBLE",
-        "employmentType": seed_job.get("employmentType") or "FULL_TIME",
+        # Preferences use the documented API enum vocabulary, independently of
+        # connector-provided display labels on discovered jobs.
+        "employmentType": "FULL_TIME",
         "preferredRoles": [seed_job["title"]],
         "preferredLocations": [seed_job.get("location")] if seed_job.get("location") else [],
     }, token=a)
@@ -92,11 +94,38 @@ def main():
     timeline = request("GET", f"/applications/{app_id}/timeline", token=a)
     assert package and decision and isinstance(preflight.get("checks"), list) and timeline
     assert created["workflowState"] != "SUBMITTED_VERIFIED", "automatic submission bypassed candidate approval"
+
+    # A fresh candidate has no persisted application outcomes: historical signal
+    # and priority must not manufacture evidence.
+    zero_history_signal = request("GET", "/analytics/historical-success?" + urllib.parse.urlencode({
+        "title": opp["title"], "source": opp["source"]
+    }), token=b)
+    assert zero_history_signal["available"] is False
+    assert zero_history_signal["confidenceStatus"] == "INSUFFICIENT_DATA"
+    assert float(zero_history_signal["historicalSuccessScore"]) == 0
+
+    # The real connector fallback must require manual action, create no external
+    # reference, and persist a notification tied to this exact application.
+    approved = request("POST", f"/applications/{app_id}/approve", {
+        "ipAddress": "127.0.0.1"
+    }, token=a)
+    assert approved["workflowState"] == "APPROVED"
+    submitted = request("POST", f"/applications/{app_id}/submit", {
+        "ipAddress": "127.0.0.1"
+    }, token=a)
+    assert submitted["workflowState"] == "MANUAL_ACTION_REQUIRED"
+    assert not submitted.get("externalApplicationId"), "manual fallback fabricated an external reference"
+    notifications_a = request("GET", "/notifications", token=a)
+    notification = next((item for item in notifications_a if item.get("applicationId") == app_id), None)
+    assert notification and notification["candidateId"] == created["candidateId"], "manual fallback notification was not persisted for the owner"
+    request("GET", f"/applications/{app_id}", token=b, expected=(403,))
+    notifications_b = request("GET", "/notifications", token=b)
+    assert all(item.get("applicationId") != app_id for item in notifications_b), "notification multi-user isolation failed"
     other_queue = request("GET", "/opportunities?page=0&size=20", token=b)
     other_applications = request("GET", "/applications", token=b)
     assert all(x["candidateId"] != created["candidateId"] for x in other_applications), "application multi-user isolation failed"
     assert all(x.get("jobId") != opp["jobId"] or x.get("applicationStatus") != created["workflowState"] for x in other_queue["content"]), "queue leaked candidate application state"
-    print("PASS: live API gates: login, context, discovery, queue, filters, matching, historical signal, priority, duplicate protection, package, decision, preflight, timeline, and isolation")
+    print("PASS: live API gates: login, context, discovery, queue, filters, matching, historical signal, priority, duplicate protection, package, decision, preflight, timeline, manual fallback, notifications, zero-history, and isolation")
 
 if __name__ == "__main__":
     main()

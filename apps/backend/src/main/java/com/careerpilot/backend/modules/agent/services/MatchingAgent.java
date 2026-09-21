@@ -116,13 +116,7 @@ public class MatchingAgent implements CareerAgent {
 
                 Map<String, Object> candidateKnowledge = resumeCache != null ? resumeCache.getStructuredKnowledge() : Map.of();
                 Map<String, Object> candidateQuality = resumeCache != null ? resumeCache.getQualityMetrics() : Map.of();
-                Map<String, Object> candidatePreferences = new HashMap<>();
-                if (preferences != null) {
-                    candidatePreferences.put("preferredRoles", List.of(preferences.getEmploymentType() != null ? preferences.getEmploymentType() : "FULL_TIME"));
-                    candidatePreferences.put("preferredLocations", List.of("Remote"));
-                    candidatePreferences.put("salaryExpectation", preferences.getSalaryMin() != null ? preferences.getSalaryMin() : 0);
-                    candidatePreferences.put("workMode", preferences.getWorkStyle() != null ? preferences.getWorkStyle() : "REMOTE");
-                }
+                Map<String, Object> candidatePreferences = candidatePreferences(preferences, criteria);
 
                 Map<String, Object> matchScores = new HashMap<>();
                 for (DiscoveryJob job : jobs) {
@@ -135,7 +129,7 @@ public class MatchingAgent implements CareerAgent {
                     MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
                             userId,
                             job.getId(),
-                            UUID.randomUUID(),
+                            null,
                             userId,
                             candidateKnowledge,
                             candidateQuality,
@@ -207,13 +201,8 @@ public class MatchingAgent implements CareerAgent {
 
                 Map<String, Object> candidateKnowledge = resumeCache.getStructuredKnowledge();
                 Map<String, Object> candidateQuality = resumeCache.getQualityMetrics();
-                Map<String, Object> candidatePreferences = new HashMap<>();
-                if (preferences != null) {
-                    candidatePreferences.put("preferredRoles", List.of(preferences.getEmploymentType() != null ? preferences.getEmploymentType() : "FULL_TIME"));
-                    candidatePreferences.put("preferredLocations", List.of("Remote"));
-                    candidatePreferences.put("salaryExpectation", preferences.getSalaryMin() != null ? preferences.getSalaryMin() : 0);
-                    candidatePreferences.put("workMode", preferences.getWorkStyle() != null ? preferences.getWorkStyle() : "REMOTE");
-                }
+                Map<String, Object> candidatePreferences = candidatePreferences(
+                        preferences, jobDiscoveryAgent.deriveCriteriaForUser(userId));
 
                 List<DiscoveryJob> jobs = jobDiscoveryService.jobs();
                 List<Map<String, Object>> matchedJobsList = new ArrayList<>();
@@ -255,7 +244,7 @@ public class MatchingAgent implements CareerAgent {
                     MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
                             userId,
                             job.getId(),
-                            UUID.randomUUID(),
+                            null,
                             userId,
                             candidateKnowledge,
                             candidateQuality,
@@ -308,6 +297,27 @@ public class MatchingAgent implements CareerAgent {
                     .exception(e)
                     .build();
         }
+    }
+
+    private Map<String, Object> candidatePreferences(UserPreference preferences, JobSearchCriteria criteria) {
+        Map<String, Object> result = new HashMap<>();
+        if (criteria != null) {
+            if (criteria.getPreferredRoles() != null && !criteria.getPreferredRoles().isEmpty()) {
+                result.put("preferredRoles", criteria.getPreferredRoles());
+            }
+            if (criteria.getLocations() != null && !criteria.getLocations().isEmpty()) {
+                result.put("preferredLocations", criteria.getLocations());
+            }
+        }
+        if (preferences != null) {
+            if (preferences.getSalaryMin() != null) {
+                result.put("salaryExpectation", preferences.getSalaryMin());
+            }
+            if (preferences.getWorkStyle() != null) {
+                result.put("workMode", preferences.getWorkStyle());
+            }
+        }
+        return result;
     }
 
     private boolean matchesCriteria(DiscoveryJob job, JobSearchCriteria criteria) {

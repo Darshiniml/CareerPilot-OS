@@ -58,10 +58,10 @@ public class NotificationController {
 
     private UUID getUserId(Principal principal) {
         if (principal == null) {
-            return userRepository.findAll().stream().findFirst().map(User::getId).orElse(UUID.randomUUID());
+            throw new SecurityException("Unauthorized");
         }
         return userRepository.findByEmail(principal.getName())
                 .map(User::getId)
-                .orElseGet(() -> userRepository.findAll().stream().findFirst().map(User::getId).orElse(UUID.randomUUID()));
+                .orElseThrow(() -> new IllegalArgumentException("Authenticated user not found"));
     }
 }

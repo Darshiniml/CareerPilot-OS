@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -83,9 +84,7 @@ public class PreferenceService {
         if (dto.getWorkStyle() != null) {
             WorkStyle.valueOf(dto.getWorkStyle().toUpperCase());
         }
-        if (dto.getEmploymentType() != null) {
-            EmploymentType.valueOf(dto.getEmploymentType().toUpperCase());
-        }
+        String employmentType = normalizeEmploymentType(dto.getEmploymentType());
 
         UserPreference pref = userPreferenceRepository.findByUserId(userId)
                 .orElseGet(() -> UserPreference.builder()
@@ -98,7 +97,11 @@ public class PreferenceService {
         pref.setSalaryMax(dto.getSalaryMax());
         pref.setCurrencyCode(dto.getCurrencyCode() != null ? dto.getCurrencyCode().toUpperCase() : "USD");
         pref.setSalaryPeriod(dto.getSalaryPeriod() != null ? dto.getSalaryPeriod().toUpperCase() : "YEARLY");
-        pref.setEmploymentType(dto.getEmploymentType() != null ? dto.getEmploymentType().toUpperCase() : "FULL_TIME");
+        if (employmentType != null) {
+            pref.setEmploymentType(employmentType);
+        } else if (pref.getEmploymentType() == null) {
+            pref.setEmploymentType(EmploymentType.FULL_TIME.name());
+        }
         pref.setJobAlertSettings(dto.isJobAlertSettings());
 
         UserPreference saved = userPreferenceRepository.save(pref);
@@ -147,5 +150,24 @@ public class PreferenceService {
         eventPublisher.publishEvent(event);
 
         return saved;
+    }
+
+    /**
+     * Converts externally supplied employment type labels to the persisted enum
+     * vocabulary without changing their meaning.  The API's canonical values are
+     * the enum names; INTERNSHIP is the one supported user-facing alias for INTERN.
+     */
+    static String normalizeEmploymentType(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("Employment type cannot be empty");
+        }
+        if ("INTERNSHIP".equals(normalized)) {
+            return EmploymentType.INTERN.name();
+        }
+        return EmploymentType.valueOf(normalized).name();
     }
 }

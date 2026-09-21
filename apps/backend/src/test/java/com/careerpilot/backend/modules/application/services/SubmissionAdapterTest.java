@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SubmissionAdapterTest {
 
     @Test
-    void validatesAndNormalizesSubmissionData() {
+    void requiresManualActionWithoutAPermittedSubmissionProvider() {
         DefaultSubmissionAdapter adapter = new DefaultSubmissionAdapter();
 
         SubmissionAdapter.SubmissionResult result = adapter.submit(Map.of(
@@ -18,8 +18,8 @@ class SubmissionAdapterTest {
                 "jobId", "job-1"
         ));
 
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getExternalReference()).contains("candidate-1");
-        assertThat(result.getStatus()).isEqualTo("submitted");
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getExternalReference()).isNull();
+        assertThat(result.getStatus()).isEqualTo("manual_action_required");
     }
 }

@@ -47,7 +47,7 @@ public class ApplicationController {
         if (!app.getCandidateId().equals(userId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(orchestratorService.approve(id, request.actorId() != null ? request.actorId() : userId, request.ipAddress()));
+        return ResponseEntity.ok(orchestratorService.approve(id, userId, request.ipAddress()));
     }
 
     @PostMapping("/{id}/reject")
@@ -58,7 +58,7 @@ public class ApplicationController {
         if (!app.getCandidateId().equals(userId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(orchestratorService.reject(id, request.actorId() != null ? request.actorId() : userId, request.reason(), request.ipAddress()));
+        return ResponseEntity.ok(orchestratorService.reject(id, userId, request.reason(), request.ipAddress()));
     }
 
     @PostMapping("/{id}/submit")
@@ -69,7 +69,7 @@ public class ApplicationController {
         if (!app.getCandidateId().equals(userId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(orchestratorService.submit(id, request.actorId() != null ? request.actorId() : userId, request.ipAddress()));
+        return ResponseEntity.ok(orchestratorService.submit(id, userId, request.ipAddress()));
     }
 
     @PostMapping("/{id}/retry")
@@ -80,7 +80,7 @@ public class ApplicationController {
         if (!app.getCandidateId().equals(userId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(orchestratorService.retry(id, request.actorId() != null ? request.actorId() : userId, request.ipAddress()));
+        return ResponseEntity.ok(orchestratorService.retry(id, userId, request.ipAddress()));
     }
 
     @PutMapping("/{id}/status")

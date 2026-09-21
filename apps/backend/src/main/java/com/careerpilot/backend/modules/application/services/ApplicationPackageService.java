@@ -132,7 +132,10 @@ public class ApplicationPackageService {
         pkg.setDecisionId(decision.getId());
         pkg.setSubmissionCapabilityJson(toJson(capability));
         pkg.setPreflightResultJson(toJson(preflight));
-        pkg.setOfficialApplyUrl(job != null && job.getSourceUrl() != null ? job.getSourceUrl() : "https://careerpilot.com");
+        // A package must never imply that CareerPilot is an external application
+        // destination.  Keep this absent when the discovered job has no verified
+        // source URL; preflight will then require manual resolution.
+        pkg.setOfficialApplyUrl(job != null ? job.getSourceUrl() : null);
         pkg.setGeneratedAt(Instant.now());
 
         return packageRepository.save(pkg);
