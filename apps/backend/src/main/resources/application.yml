@@ -48,6 +48,13 @@ features:
     enable-auto-apply: ${ENABLE_AUTO_APPLY:false}
     enable-company-research: ${ENABLE_COMPANY_RESEARCH:true}
 
+careerpilot:
+  ingestion:
+    n8n:
+      # Machine-to-machine shared secret for the n8n ingestion webhook. Sourced from the
+      # environment only; never hardcoded. When empty, ingestion is DISABLED (fails closed).
+      shared-secret: ${N8N_INGESTION_SHARED_SECRET:}
+
 management:
   endpoints:
     web:

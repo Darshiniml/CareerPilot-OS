@@ -1,5 +1,6 @@
 package com.careerpilot.backend.config;
 
+import com.careerpilot.backend.modules.communication.ingestion.security.IngestionAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,10 +28,14 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final MdcCorrelationFilter mdcCorrelationFilter;
+    private final IngestionAuthenticationFilter ingestionAuthenticationFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, MdcCorrelationFilter mdcCorrelationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          MdcCorrelationFilter mdcCorrelationFilter,
+                          IngestionAuthenticationFilter ingestionAuthenticationFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.mdcCorrelationFilter = mdcCorrelationFilter;
+        this.ingestionAuthenticationFilter = ingestionAuthenticationFilter;
     }
 
     @Bean
@@ -57,6 +62,7 @@ public class SecurityConfig {
                         })
                 )
                 .addFilterBefore(mdcCorrelationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(ingestionAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -77,7 +83,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Correlation-ID", "X-Request-ID"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Correlation-ID", "X-Request-ID", "X-Ingestion-Token"));
         configuration.setExposedHeaders(Arrays.asList("Authorization", "X-Correlation-ID", "X-Request-ID"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
