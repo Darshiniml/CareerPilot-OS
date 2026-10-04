@@ -32,6 +32,9 @@ from app.job.parser import JobParser
 from app.job.extractors import JobExtractor, JobQualityMetricsGenerator
 from app.job.insights import JobInsightsService
 
+# HR Communication Intelligence imports
+from app.communication.classifier import HrCommunicationClassifier
+
 app = FastAPI(
     title="CareerPilot OS AI Platform",
     description="Python FastAPI AI service providing multi-agent orchestration, LangGraph workflow execution, and semantic vector routing.",
@@ -265,6 +268,17 @@ def execute_task(request: ExecuteTaskRequest):
                 filters=payload
             )
             result = {"results": retrieved}
+        elif task_type == "HR_COMMUNICATION_CLASSIFY":
+            provider_name = "hr-communication-classifier"
+            classifier = HrCommunicationClassifier()
+            # subject/body/sender are UNTRUSTED message content, treated strictly as data.
+            # application_context (when present) is trusted CareerPilot DB context.
+            result = classifier.classify(
+                subject=payload.get("subject", "") or "",
+                body=payload.get("body", "") or "",
+                sender=payload.get("sender", "") or "",
+                application_context=payload.get("applicationContext", {}) or {},
+            )
         else:
             result = {
                 "message": f"Generic execution completed for type: {task_type}"

@@ -29,6 +29,7 @@ public class ApplicationController {
     private final ApplicationDecisionService decisionService;
     private final ApplicationPackageService packageService;
     private final ApplicationTrackingService trackingService;
+    private final ApplicationTimelineService timelineService;
     private final UserRepository userRepository;
 
     @PostMapping("/create")
@@ -114,14 +115,14 @@ public class ApplicationController {
     }
 
     @GetMapping("/{id}/timeline")
-    @Operation(summary = "Get application state history timeline and duration")
-    public ResponseEntity<List<ApplicationTrackingService.ApplicationTimelineEvent>> getTimeline(@PathVariable UUID id, Principal principal) {
+    @Operation(summary = "Get unified application timeline (state history + communication-derived events)")
+    public ResponseEntity<List<ApplicationTimelineService.TimelineEntry>> getTimeline(@PathVariable UUID id, Principal principal) {
         UUID actorId = getUserId(principal);
         ApplicationRecord app = orchestratorService.getApplication(id);
         if (!app.getCandidateId().equals(actorId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(trackingService.getTimeline(id, actorId));
+        return ResponseEntity.ok(timelineService.getTimeline(id));
     }
 
     @GetMapping("/{id}/preflight")

@@ -391,7 +391,20 @@ export const Applications: React.FC = () => {
                   <div key={index} className="flex gap-3 text-body-sm">
                     <div className="w-2 h-2 rounded-full bg-indigo-600 mt-1.5" />
                     <div>
-                      <p className="font-bold text-jet-black">{ev.state}</p>
+                      <p className="font-bold text-jet-black">
+                        {ev.source === 'COMMUNICATION'
+                          ? `${String(ev.eventType || '').replace(/_/g, ' ')} (email)`
+                          : `${ev.fromState || 'INITIAL'} → ${ev.toState}`}
+                      </p>
+                      {ev.source === 'COMMUNICATION' && (
+                        <p className="text-[10px] text-slate mt-0.5">
+                          {String(ev.outcome || '').replace(/_/g, ' ').toLowerCase()}
+                          {ev.stateChanged && ev.toState ? ` · ${ev.fromState} → ${ev.toState}` : ''}
+                          {typeof ev.classificationConfidence === 'number'
+                            ? ` · ${Math.round(ev.classificationConfidence * 100)}% confidence`
+                            : ''}
+                        </p>
+                      )}
                       <p className="text-xs text-slate mt-0.5">{ev.reason || 'State transition'}</p>
                       <p className="text-[10px] text-ash-gray mt-0.5">{new Date(ev.timestamp).toLocaleString()}</p>
                     </div>
