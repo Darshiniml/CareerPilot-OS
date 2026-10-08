@@ -22,6 +22,9 @@ public class OpportunityDto {
     private String connectorId;
 
     private double matchScore;
+    /** False when the candidate has no processed resume yet: the job is unscored, not scored 0. */
+    private Boolean matchAvailable;
+    private List<String> notAssessedFactors;
     private double historicalSuccessScore;
     private String historicalConfidence;
 

@@ -1,6 +1,5 @@
 package com.careerpilot.backend.modules.discovery.services;
 
-import com.careerpilot.backend.modules.ai.job.services.JobIntelligenceService;
 import com.careerpilot.backend.modules.ai.knowledge.domain.AiDocument;
 import com.careerpilot.backend.modules.ai.knowledge.repositories.AiDocumentRepository;
 import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob;
@@ -9,31 +8,40 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.Map;
 
-/** Bridges discovery into the existing intelligence pipeline; matching remains downstream of its knowledge events. */
+/**
+ * Registers each discovered job as a knowledge document so it can be analysed later.
+ *
+ * <p>AI analysis (parse, metadata, insights) is NOT run here: a sync can return hundreds of jobs and
+ * three model calls per job would saturate the model and the DB pool inside the discovery
+ * transaction. Jobs are analysed on demand ({@code POST /jobs/{id}/analyze}) and matching works on
+ * connector facts until then, reporting un-assessed factors instead of guessing.
+ */
 @Component
 public class EventJobIntelligenceAdapter implements JobIntelligencePort {
     private final AiDocumentRepository documents;
-    private final JobIntelligenceService intelligence;
 
-    public EventJobIntelligenceAdapter(AiDocumentRepository documents, JobIntelligenceService intelligence) {
+    public EventJobIntelligenceAdapter(AiDocumentRepository documents) {
         this.documents = documents;
-        this.intelligence = intelligence;
     }
 
     @Override
     public void accept(DiscoveryJob job) {
-        AiDocument document = AiDocument.builder()
+        AiDocument document = documents.findById(job.getId()).orElseGet(() -> AiDocument.builder()
                 .id(job.getId())
-                .documentType("JOB")
-                .status("CREATED")
-                .title(job.getTitle())
-                .source(job.getSourceUrl())
-                .content(job.getRawContent())
-                .flexibleMetadata(Map.of("discoveryJobId", job.getId().toString(), "connectorId", job.getConnectorId()))
                 .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build();
+                .build());
+        boolean contentChanged = !java.util.Objects.equals(document.getContent(), job.getRawContent());
+        document.setDocumentType("JOB");
+        document.setTitle(job.getTitle());
+        document.setSource(job.getSourceUrl());
+        document.setContent(job.getRawContent());
+        if (contentChanged || document.getStatus() == null) {
+            // a previous analysis no longer describes this posting
+            document.setStatus("CREATED");
+            document.setStructuredMetadata(null);
+            document.setFlexibleMetadata(Map.of("discoveryJobId", job.getId().toString(), "connectorId", job.getConnectorId()));
+        }
+        document.setUpdatedAt(Instant.now());
         documents.save(document);
-        intelligence.processJob(document.getId(), job.getRawContent(), job.getSourceUrl());
     }
 }

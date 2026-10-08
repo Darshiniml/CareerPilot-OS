@@ -1,98 +1,127 @@
-version: '3.8'
+# CareerPilot OS — full stack.
+#   1. cp .env.example .env   and fill in the secrets (see comments there)
+#   2. docker compose up --build
+#   3. open http://localhost
+# AI: by default the AI service uses Ollama on the HOST (http://host.docker.internal:11434).
+#     To run Ollama in a container instead:  docker compose --profile ollama up --build
+#     and set OLLAMA_BASE_URL=http://ollama:11434 in .env.
+
+name: careerpilot
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cp-postgres
-    ports:
-      - "5432:5432"
     environment:
-      POSTGRES_DB: careerpilot
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-careerpilot}
+      POSTGRES_USER: ${DB_USER:-careerpilot}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-careerpilot} -d ${DB_NAME:-careerpilot}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
-    container_name: cp-redis
-    ports:
-      - "6379:6379"
+    image: redis:7.4-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    restart: unless-stopped
 
   qdrant:
-    image: qdrant/qdrant:latest
-    container_name: cp-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
+    image: qdrant/qdrant:v1.12.4
     volumes:
       - qdrant_data:/qdrant/storage
+    restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
-    container_name: cp-minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
-      retries: 5
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: cp-prometheus
+      retries: 10
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9001:9001"   # MinIO console, localhost only
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
     volumes:
-      - ./deployment/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: cp-grafana
-    ports:
-      - "3000:3000"
+  ai-service:
+    build:
+      context: ./apps/ai-service
+    environment:
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?set AI_SERVICE_TOKEN in .env}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-600}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      QDRANT_URL: http://qdrant:6333
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - prometheus
+      - qdrant
+    restart: unless-stopped
 
   backend:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
-    container_name: cp-backend
-    ports:
-      - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: prod
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: careerpilot
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_NAME: ${DB_NAME:-careerpilot}
+      DB_USER: ${DB_USER:-careerpilot}
+      DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
-      S3_BUCKET_NAME: careerpilot-resumes
-      JWT_SECRET_KEY: default-very-secure-secret-key-that-is-at-least-256-bits-long-careerpilot-os-2026
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-careerpilot-resumes}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+      CAREERPILOT_AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN}
+      CAREERPILOT_AI_TIMEOUT_MS: ${CAREERPILOT_AI_TIMEOUT_MS:-660000}
+      CAREERPILOT_CORS_ALLOWED_ORIGINS: ${PUBLIC_URL:-http://localhost}
+      CAREERPILOT_FRONTEND_URL: ${PUBLIC_URL:-http://localhost}
+      N8N_INGESTION_SHARED_SECRET: ${N8N_INGESTION_SHARED_SECRET:-}
+      EMAIL_TOKEN_ENCRYPTION_KEY: ${EMAIL_TOKEN_ENCRYPTION_KEY:-}
+      GMAIL_OAUTH_CLIENT_ID: ${GMAIL_OAUTH_CLIENT_ID:-}
+      GMAIL_OAUTH_CLIENT_SECRET: ${GMAIL_OAUTH_CLIENT_SECRET:-}
+      GMAIL_OAUTH_REDIRECT_URI: ${GMAIL_OAUTH_REDIRECT_URI:-}
+      OUTLOOK_OAUTH_CLIENT_ID: ${OUTLOOK_OAUTH_CLIENT_ID:-}
+      OUTLOOK_OAUTH_CLIENT_SECRET: ${OUTLOOK_OAUTH_CLIENT_SECRET:-}
+      OUTLOOK_OAUTH_REDIRECT_URI: ${OUTLOOK_OAUTH_REDIRECT_URI:-}
+      ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
+      ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
+      JOOBLE_API_KEY: ${JOOBLE_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,45 +129,47 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-
-  ai-service:
-    build:
-      context: ./apps/ai-service
-      dockerfile: Dockerfile
-    container_name: cp-ai-service
-    ports:
-      - "8000:8000"
-    environment:
-      LLM_PROVIDER: mock
-      JWT_SECRET_KEY: default-very-secure-secret-key-that-is-at-least-256-bits-long-careerpilot-os-2026
-    depends_on:
-      - qdrant
+      ai-service:
+        condition: service_started
+    restart: unless-stopped
 
   frontend:
     build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-    container_name: cp-frontend
+      context: .
+      dockerfile: deployment/frontend/Dockerfile
     ports:
-      - "5173:5173"
-    environment:
-      VITE_API_BASE_URL: /api/v1
+      - "${HTTP_PORT:-80}:80"
     depends_on:
       - backend
+    restart: unless-stopped
 
-  nginx:
-    image: nginx:alpine
-    container_name: cp-nginx
-    ports:
-      - "80:80"
+  prometheus:
+    image: prom/prometheus:v2.55.1
     volumes:
-      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deployment/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deployment/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
     depends_on:
-      - backend
-      - ai-service
-      - frontend
+      - prometheus
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   qdrant_data:
   minio_data:
+  ollama_data:
+  prometheus_data:
+  grafana_data:

@@ -196,7 +196,7 @@ class CommunicationProcessingControllerIntegrationTest {
         UUID user = ensureUser("m224-valid@example.test");
         String email = emailOf(user);
         DiscoveryJob job = createJob();
-        ApplicationRecord application = createApplication(user, job, WorkflowState.DISCOVERED);
+        ApplicationRecord application = createApplication(user, job, WorkflowState.SUBMITTED);
         HrCommunication communication = createMatchedCommunication(user, application,
                 "Interview invitation", "We would like to invite you to interview with the team.", Instant.now());
         stubAi("INTERVIEW_INVITATION", 0.92);
@@ -210,7 +210,7 @@ class CommunicationProcessingControllerIntegrationTest {
         assertEquals(application.getApplicationId().toString(), response.get("applicationId").asText());
         assertEquals("INTERVIEW_INVITATION", response.get("eventType").asText());
         assertTrue(response.get("stateChanged").asBoolean());
-        assertEquals("DISCOVERED", response.get("previousState").asText());
+        assertEquals("SUBMITTED", response.get("previousState").asText());
         assertEquals("INTERVIEW", response.get("newState").asText());
         assertEquals("INTERVIEW", response.get("applicationState").asText());
         assertFalse(response.get("timelineEventId").isNull());
@@ -222,6 +222,10 @@ class CommunicationProcessingControllerIntegrationTest {
                 .findByApplicationIdOrderByCreatedAtAsc(application.getApplicationId());
         assertEquals(1, history.size());
         assertEquals(WorkflowState.INTERVIEW, history.get(0).getToState());
+        // Provenance: the change is attributed to the HR communication, not to the candidate.
+        assertEquals(ApplicationHistory.ACTOR_COMMUNICATION, history.get(0).getActorType());
+        assertNull(history.get(0).getActorId());
+        assertEquals(communication.getId(), history.get(0).getSourceCommunicationId());
 
         List<ApplicationTimelineEvent> events = timelineEventRepository
                 .findByApplicationIdOrderByEventTimestampAscIdAsc(application.getApplicationId());
@@ -475,7 +479,7 @@ class CommunicationProcessingControllerIntegrationTest {
         // Interview (received later) is processed first.
         process(mockMvc, interview.getId(), "STATE_TRANSITIONED");
         // The older UNDER_REVIEW evidence arrives afterwards and must not regress the state.
-        process(mockMvc, review.getId(), "INVALID_TRANSITION_REJECTED");
+        process(mockMvc, review.getId(), "OUT_OF_ORDER_IGNORED");
         assertEquals(WorkflowState.INTERVIEW,
                 applicationRepository.findById(application.getApplicationId()).orElseThrow().getWorkflowState());
 
@@ -496,6 +500,28 @@ class CommunicationProcessingControllerIntegrationTest {
         List<String> sorted = new java.util.ArrayList<>(timestamps);
         java.util.Collections.sort(sorted);
         assertEquals(sorted, timestamps, "timeline must be in ascending timestamp order");
+    }
+
+    @Test
+    @WithMockUser(username = "m224-unified@example.test", roles = "USER")
+    void communicationEvidenceUsesTheSingleLifecycleAuthority() throws Exception {
+        UUID user = ensureUser("m224-unified@example.test");
+        DiscoveryJob job = createJob();
+        // Not yet applied: the canonical lifecycle (VALID_TRANSITIONS) forbids DISCOVERED -> INTERVIEW,
+        // so HR evidence alone cannot make that jump; the evidence is preserved for the candidate to review.
+        ApplicationRecord application = createApplication(user, job, WorkflowState.DISCOVERED);
+        HrCommunication communication = createMatchedCommunication(user, application,
+                "Interview invitation", "We would like to invite you to interview.", Instant.now());
+        setClassification(communication, CommunicationClassification.INTERVIEW_INVITATION, 0.95,
+                CommunicationProcessingStatus.PROCESSED);
+
+        process(mockMvc, communication.getId(), "INVALID_TRANSITION_REJECTED");
+
+        assertEquals(WorkflowState.DISCOVERED,
+                applicationRepository.findById(application.getApplicationId()).orElseThrow().getWorkflowState());
+        assertTrue(historyRepository.findByApplicationIdOrderByCreatedAtAsc(application.getApplicationId()).isEmpty());
+        assertEquals(1, timelineEventRepository
+                .findByApplicationIdOrderByEventTimestampAscIdAsc(application.getApplicationId()).size());
     }
 
     // ---------- 12. conflicting communications ----------

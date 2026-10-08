@@ -157,35 +157,31 @@ public class GreenhouseJobConnector implements Connector {
 
     private DiscoveredJob parseGreenhouseJob(String board, JsonNode node) {
         try {
-            String externalId = "greenhouse-" + board + "-" + node.get("id").asText();
-            String title = node.has("title") ? node.get("title").asText() : "Software Engineer";
-            String applyUrl = node.has("absolute_url") ? node.get("absolute_url").asText() : "https://boards.greenhouse.io/" + board;
-            String location = node.has("location") && node.get("location").has("name") ?
-                    node.get("location").get("name").asText() : "Remote";
-            String content = node.has("content") ? node.get("content").asText() : title + " at " + board;
-
-            // Strip HTML tags for clean text content
-            String cleanContent = content.replaceAll("<[^>]*>", " ");
-
-            String companyName = board.substring(0, 1).toUpperCase() + board.substring(1);
-
+            String id = ConnectorParsing.text(node, "id");
+            String title = ConnectorParsing.text(node, "title");
+            String content = ConnectorParsing.plainText(ConnectorParsing.text(node, "content"));
+            if (id == null || title == null || content == null) {
+                return null; // incomplete posting: skipped rather than filled with guesses
+            }
+            String location = node.has("location") ? ConnectorParsing.text(node.get("location"), "name") : null;
+            String companyName = ConnectorParsing.capitalize(board);
             return DiscoveredJob.builder()
-                    .externalId(externalId)
+                    .externalId("greenhouse-" + board + "-" + id)
                     .connectorId(getConnectorId())
                     .source("Greenhouse (" + companyName + ")")
-                    .sourceUrl(applyUrl)
+                    .sourceUrl(ConnectorParsing.text(node, "absolute_url"))
                     .title(title)
                     .company(companyName)
                     .location(location)
-                    .employmentType("FULL_TIME")
-                    .workMode(location.toLowerCase().contains("remote") ? "REMOTE" : "HYBRID")
-                    .rawContent(cleanContent.length() > 3000 ? cleanContent.substring(0, 3000) : cleanContent)
-                    .postedDate(LocalDateTime.now(ZoneOffset.UTC))
+                    .employmentType(null) // not provided by the Greenhouse job board API
+                    .workMode(ConnectorParsing.workMode(null, location))
+                    .rawContent(content)
+                    .postedDate(ConnectorParsing.isoDateTime(ConnectorParsing.text(node, "updated_at")))
                     .discoveredAt(LocalDateTime.now(ZoneOffset.UTC))
                     .normalizedTitle(title.trim())
-                    .normalizedCompany(companyName.trim())
-                    .skills(List.of("Java", "Software Engineering", "Backend"))
-                    .metadata(Map.of("board", board, "externalId", node.get("id").asText()))
+                    .normalizedCompany(companyName)
+                    .skills(List.of())
+                    .metadata(Map.of("board", board, "externalId", id, "dateField", "updated_at"))
                     .build();
         } catch (Exception e) {
             return null;

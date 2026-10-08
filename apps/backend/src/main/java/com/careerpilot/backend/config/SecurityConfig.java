@@ -30,6 +30,9 @@ public class SecurityConfig {
     private final MdcCorrelationFilter mdcCorrelationFilter;
     private final IngestionAuthenticationFilter ingestionAuthenticationFilter;
 
+    @org.springframework.beans.factory.annotation.Value("${careerpilot.cors.allowed-origins:http://localhost:5173}")
+    private String allowedOrigins;
+
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           MdcCorrelationFilter mdcCorrelationFilter,
                           IngestionAuthenticationFilter ingestionAuthenticationFilter) {
@@ -50,7 +53,13 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/actuator/**"
+                                "/actuator/health",
+                                "/actuator/health/**",
+                                "/actuator/info",
+                                // Scraped by Prometheus on the internal network; nginx does not expose /actuator.
+                                "/actuator/prometheus",
+                                // OAuth provider redirect: authenticated by the signed, expiring state parameter.
+                                "/api/v1/email/oauth/*/callback"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
@@ -58,7 +67,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
                             response.setContentType("application/json");
-                            response.getWriter().write("{\"error\":\"UNAUTHORIZED\",\"message\":\"" + authException.getMessage() + "\"}");
+                            response.getWriter().write("{\"error\":\"UNAUTHORIZED\",\"message\":\"Authentication required\"}");
                         })
                 )
                 .addFilterBefore(mdcCorrelationFilter, UsernamePasswordAuthenticationFilter.class)
@@ -81,7 +90,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*"));
+        configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim).filter(o -> !o.isEmpty()).toList());
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Correlation-ID", "X-Request-ID", "X-Ingestion-Token"));
         configuration.setExposedHeaders(Arrays.asList("Authorization", "X-Correlation-ID", "X-Request-ID"));

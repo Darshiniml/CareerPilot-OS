@@ -36,6 +36,22 @@ public class MatchingCache {
         if (key != null) cache.remove(key);
     }
 
+    /** Drop every cached match for one candidate (their resume or preferences changed). */
+    public void evictCandidate(UUID candidateId) {
+        if (candidateId != null) {
+            String prefix = candidateId + ":";
+            cache.keySet().removeIf(k -> k.startsWith(prefix));
+        }
+    }
+
+    /** Drop every cached match for one job (its requirements were (re)analysed). */
+    public void evictJob(UUID jobId) {
+        if (jobId != null) {
+            String suffix = ":" + jobId;
+            cache.keySet().removeIf(k -> k.endsWith(suffix));
+        }
+    }
+
     public void clear() {
         cache.clear();
     }

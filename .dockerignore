@@ -1,0 +1,18 @@
+# Build context hygiene (the backend and frontend images build from the repository root).
+**/.git
+**/.gradle
+**/node_modules
+**/build
+**/bin
+**/dist
+**/venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+*.hprof
+apps/backend/data
+scratch
+terminal_logs
+docs
+.env
+.env.*

@@ -23,7 +23,7 @@ public class RemotePreferenceMatchScorer implements MatchScorer {
         String companyRemotePolicy = company.getRemotePolicy();
 
         if (jobWorkMode == null || jobWorkMode.isBlank()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         boolean jobIsRemote = isRemoteWorkMode(jobWorkMode);

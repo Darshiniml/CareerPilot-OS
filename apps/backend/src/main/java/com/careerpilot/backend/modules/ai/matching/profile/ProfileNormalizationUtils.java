@@ -12,7 +12,7 @@ public final class ProfileNormalizationUtils {
             return "";
         }
         return value.trim().toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9+#.\\- ]", "")
+                .replaceAll("[^\\p{L}\\p{N}+#.\\- ]", "")
                 .replaceAll("\\s+", " ");
     }
 
@@ -90,11 +90,8 @@ public final class ProfileNormalizationUtils {
     public static Set<String> matchedItems(Set<String> candidate, Set<String> required) {
         Set<String> matched = new HashSet<>();
         for (String req : required) {
-            for (String cand : candidate) {
-                if (cand.contains(req) || req.contains(cand)) {
-                    matched.add(req);
-                    break;
-                }
+            if (candidate.stream().anyMatch(cand -> sameTerm(cand, req))) {
+                matched.add(req);
             }
         }
         return matched;
@@ -103,17 +100,43 @@ public final class ProfileNormalizationUtils {
     public static Set<String> missingItems(Set<String> candidate, Set<String> required) {
         Set<String> missing = new LinkedHashSet<>();
         for (String req : required) {
-            boolean found = false;
-            for (String cand : candidate) {
-                if (cand.contains(req) || req.contains(cand)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            if (candidate.stream().noneMatch(cand -> sameTerm(cand, req))) {
                 missing.add(req);
             }
         }
         return missing;
+    }
+
+    /**
+     * Two normalized terms match when equal or when one appears as a whole word/phrase inside the
+     * other ("spring" ~ "spring boot"). Plain substring containment is NOT enough: it made "r" match
+     * "spring boot" and "java" match "javascript".
+     */
+    static boolean sameTerm(String a, String b) {
+        if (a == null || b == null || a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+        return a.equals(b) || containsWord(a, b) || containsWord(b, a);
+    }
+
+    private static boolean containsWord(String haystack, String needle) {
+        int from = 0;
+        while (true) {
+            int i = haystack.indexOf(needle, from);
+            if (i < 0) {
+                return false;
+            }
+            int end = i + needle.length();
+            boolean startOk = i == 0 || !isTermChar(haystack.charAt(i - 1));
+            boolean endOk = end == haystack.length() || !isTermChar(haystack.charAt(end));
+            if (startOk && endOk) {
+                return true;
+            }
+            from = i + 1;
+        }
+    }
+
+    private static boolean isTermChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '+' || c == '#';
     }
 }

@@ -1,5 +1,8 @@
 package com.careerpilot.backend.modules.opportunity.services;
 
+import com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService;
+import com.careerpilot.backend.modules.ai.matching.MatchService;
+
 import com.careerpilot.backend.modules.agent.domain.AgentPolicy;
 import com.careerpilot.backend.modules.agent.repositories.AgentPolicyRepository;
 import com.careerpilot.backend.modules.ai.company.domain.CompanyIntelligenceCache;
@@ -34,7 +37,8 @@ import java.util.*;
 @Slf4j
 public class OpportunityPrioritizationService {
 
-    private final MatchingEngine matchingEngine;
+    private final MatchService matchService;
+    private final CandidateKnowledgeService candidateKnowledgeService;
     private final HistoricalSuccessSignalService historicalSignalService;
     private final ApplicationRecordRepository applicationRepository;
     private final ApplicationSubmissionRegistry submissionRegistry;
@@ -45,67 +49,16 @@ public class OpportunityPrioritizationService {
 
     @Transactional(readOnly = true)
     public OpportunityDto prioritize(UUID candidateId, DiscoveryJob job) {
-        // 1. Get Candidate Data
-        Map<String, Object> candidateData = dataCollector.collectCandidateData(candidateId);
-        ResumeIntelligenceCache resumeCache = (ResumeIntelligenceCache) candidateData.get("resumeCache");
-        UserPreference preferences = (UserPreference) candidateData.get("preferences");
-        Resume defaultResume = (Resume) candidateData.get("resume");
-
-        Map<String, Object> candidateKnowledge = resumeCache != null ? resumeCache.getStructuredKnowledge() : Map.of();
-        Map<String, Object> candidateQuality = resumeCache != null ? resumeCache.getQualityMetrics() : Map.of();
-        Map<String, Object> candidatePreferences = new HashMap<>();
-        if (preferences != null) {
-            candidatePreferences.put("preferredLocations", List.of());
-            candidatePreferences.put("salaryMin", preferences.getSalaryMin());
-            candidatePreferences.put("salaryMax", preferences.getSalaryMax());
-            candidatePreferences.put("currencyCode", preferences.getCurrencyCode());
-            candidatePreferences.put("workStyle", preferences.getWorkStyle());
-            candidatePreferences.put("employmentType", preferences.getEmploymentType());
-        }
-
-        // 2. Get Job/Company Cache
-        Map<String, Object> jobKnowledge = new HashMap<>();
-        jobKnowledge.put("title", job.getTitle());
-        jobKnowledge.put("company", job.getCompany());
-        jobKnowledge.put("locations", List.of(job.getLocation() != null ? job.getLocation() : ""));
-        jobKnowledge.put("rawContent", job.getRawContent() != null ? job.getRawContent() : "");
-
-        Map<String, Object> companyKnowledge = new HashMap<>();
-        Map<String, Object> companyMeta = new HashMap<>();
-        Map<String, Object> companyInsights = new HashMap<>();
-        if (job.getCompany() != null) {
-            String cleanName = job.getCompany().toLowerCase().replaceAll("[^a-z0-9]", "");
-            String companyChecksum = cleanName + "_checksum";
-            Optional<CompanyIntelligenceCache> cc = companyCacheRepository.findById(companyChecksum);
-            if (cc.isPresent()) {
-                companyKnowledge = cc.get().getStructuredKnowledge();
-                companyMeta = cc.get().getMetadata();
-                companyInsights = cc.get().getInsights();
-            }
-        }
-
-        // 3. Match calculation
-        MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
-                candidateId,
-                job.getId(),
-                null,
-                candidateId,
-                candidateKnowledge,
-                candidateQuality,
-                candidatePreferences,
-                companyKnowledge,
-                companyMeta,
-                companyInsights,
-                jobKnowledge,
-                Map.of(),
-                Map.of()
-        );
-
-        double matchScore = matchResult != null ? matchResult.getOverallScore() : 0.0;
+        // 1-3. Real match from the candidate's processed resume + the job's data (no empty-data scoring)
+        Optional<MatchResultDto> matchOpt = matchService.matchIfPossible(candidateId, job.getId());
+        MatchResultDto matchResult = matchOpt.orElse(null);
+        boolean matchAvailable = matchResult != null;
+        double matchScore = matchAvailable ? matchResult.getOverallScore() : 0.0;
+        Optional<CandidateKnowledgeService.ResumeKnowledge> primaryResume = candidateKnowledgeService.primaryResume(candidateId);
 
         // 4. Historical Signal calculation
-        UUID resumeId = defaultResume != null ? defaultResume.getId() : null;
-        Integer resumeVersion = defaultResume != null ? 1 : null;
+        UUID resumeId = primaryResume.map(CandidateKnowledgeService.ResumeKnowledge::resumeId).orElse(null);
+        Integer resumeVersion = primaryResume.map(CandidateKnowledgeService.ResumeKnowledge::versionNumber).orElse(null);
         Set<String> skills = new HashSet<>();
         if (matchResult != null && matchResult.getMatchedSkills() != null) {
             skills.addAll(matchResult.getMatchedSkills());
@@ -137,7 +90,9 @@ public class OpportunityPrioritizationService {
         }
 
         String priorityLevel;
-        if (priorityScore >= 80.0) {
+        if (!matchAvailable) {
+            priorityLevel = "UNSCORED";
+        } else if (priorityScore >= 80.0) {
             priorityLevel = "HIGH_PRIORITY";
         } else if (priorityScore >= 60.0) {
             priorityLevel = "MEDIUM_PRIORITY";
@@ -175,7 +130,12 @@ public class OpportunityPrioritizationService {
 
         // 8. Reasons generation
         List<String> reasons = new ArrayList<>();
-        if (matchScore >= 80.0) {
+        if (!matchAvailable) {
+            reasons.add("Upload a resume and let AI processing finish to score this job against your profile");
+        } else if (Boolean.FALSE.equals(matchResult.getJobAnalyzed())) {
+            reasons.add("Job requirements not analysed yet: skill-based factors are not assessed");
+        }
+        if (matchAvailable && matchScore >= 80.0) {
             reasons.add("Strong tech stack and skills match (" + Math.round(matchScore) + "%)");
         }
         if (confidence.equals("SUFFICIENT")) {
@@ -198,6 +158,8 @@ public class OpportunityPrioritizationService {
                 .source(job.getSource())
                 .sourceUrl(job.getSourceUrl())
                 .connectorId(job.getConnectorId())
+                .matchAvailable(matchAvailable)
+                .notAssessedFactors(matchAvailable ? matchResult.getNotAssessedFactors() : List.of())
                 .matchScore(matchScore)
                 .historicalSuccessScore(historicalSuccessScore)
                 .historicalConfidence(confidence)

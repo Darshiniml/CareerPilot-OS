@@ -130,46 +130,44 @@ public class WeWorkRemotelyJobConnector implements Connector {
         try {
             String title = getTagValue(item, "title");
             String link = getTagValue(item, "link");
-            String description = getTagValue(item, "description");
+            String description = ConnectorParsing.plainText(getTagValue(item, "description"));
             String guid = getTagValue(item, "guid");
-
-            if (guid == null || guid.isBlank()) {
-                guid = link != null ? link : UUID.randomUUID().toString();
+            String identity = guid != null && !guid.isBlank() ? guid : link;
+            if (title == null || identity == null || description == null) {
+                return null; // no stable identity or content: skip, never invent an id
             }
-
-            String externalId = "wwr-" + Math.abs(guid.hashCode());
-            String company = "Remote Enterprise";
-            String jobTitle = title != null ? title : "Remote Developer";
-
-            if (title != null && title.contains(" is hiring a ")) {
+            String company = null;
+            String jobTitle = title.trim();
+            if (title.contains(" is hiring a ")) {
                 String[] parts = title.split(" is hiring a ", 2);
                 company = parts[0].trim();
                 jobTitle = parts[1].trim();
-            } else if (title != null && title.contains(":")) {
+            } else if (title.contains(":")) {
                 String[] parts = title.split(":", 2);
                 company = parts[0].trim();
                 jobTitle = parts[1].trim();
             }
-
-            String cleanContent = description != null ? description.replaceAll("<[^>]*>", " ") : jobTitle + " at " + company;
-
+            if (company == null || company.isBlank()) {
+                return null; // company unknown: skipped
+            }
+            String region = getTagValue(item, "region");
             return DiscoveredJob.builder()
-                    .externalId(externalId)
+                    .externalId("wwr-" + ConnectorParsing.stableId(identity))
                     .connectorId(getConnectorId())
                     .source("We Work Remotely")
-                    .sourceUrl(link != null ? link : "https://weworkremotely.com")
+                    .sourceUrl(link)
                     .title(jobTitle)
                     .company(company)
-                    .location("Worldwide Remote")
-                    .employmentType("FULL_TIME")
-                    .workMode("REMOTE")
-                    .rawContent(cleanContent.length() > 3000 ? cleanContent.substring(0, 3000) : cleanContent)
-                    .postedDate(LocalDateTime.now(ZoneOffset.UTC))
+                    .location(region)
+                    .employmentType(ConnectorParsing.employmentType(getTagValue(item, "type")))
+                    .workMode("REMOTE") // We Work Remotely lists remote jobs only
+                    .rawContent(description)
+                    .postedDate(ConnectorParsing.rfc1123(getTagValue(item, "pubDate")))
                     .discoveredAt(LocalDateTime.now(ZoneOffset.UTC))
                     .normalizedTitle(jobTitle)
                     .normalizedCompany(company)
-                    .skills(List.of("Backend", "Java", "Python", "Software Engineering"))
-                    .metadata(Map.of("guid", guid))
+                    .skills(List.of())
+                    .metadata(Map.of("guid", identity))
                     .build();
         } catch (Exception e) {
             return null;

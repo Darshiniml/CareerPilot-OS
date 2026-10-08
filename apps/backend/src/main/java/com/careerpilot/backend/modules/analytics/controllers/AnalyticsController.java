@@ -43,6 +43,7 @@ public class AnalyticsController {
     private final JobDiscoveryAgent jobDiscoveryAgent;
     private final OpportunityPrioritizationService prioritizationService;
     private final DiscoveryJobRepository jobRepository;
+    private final CareerDashboardService careerDashboardService;
 
     @GetMapping("/overview")
     @Operation(summary = "Get overall career analytics overview")
@@ -159,14 +160,10 @@ public class AnalyticsController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/market")
-    public ResponseEntity<Map<String, Object>> getMarketDemand(Principal principal) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("roleDemand", Map.of("Backend Engineer", 92.0, "DevOps Engineer", 84.0, "Frontend Engineer", 76.0));
-        response.put("locationDemand", Map.of("Bangalore", 88.0, "Remote", 94.0, "Mumbai", 60.0));
-        response.put("industryDemand", Map.of("FinTech", 90.0, "HealthTech", 72.0, "E-commerce", 85.0));
-        response.put("remoteDemandPercentage", 65.5);
-        return ResponseEntity.ok(response);
+    /** Real career analytics from stored applications, emails, matches, interviews and learning. */
+    @GetMapping("/career-dashboard")
+    public ResponseEntity<Map<String, Object>> getCareerDashboard(Principal principal) {
+        return ResponseEntity.ok(careerDashboardService.dashboard(getUserId(principal)));
     }
 
     @GetMapping("/career-growth")
@@ -200,8 +197,8 @@ public class AnalyticsController {
         
         Map<String, Object> response = new HashMap<>();
         response.put("careerGrowthScore", score);
-        response.put("roleProgression", "Tracked successfully");
-        response.put("responsibilityProgression", "In progress");
+        response.put("basedOn", Map.of("experienceEntries", experiences.size(), "skills", skills.size(),
+                "applications", applications.size(), "interviewSessions", interviews.size()));
 
         return ResponseEntity.ok(response);
     }

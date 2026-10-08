@@ -4,14 +4,10 @@ import com.careerpilot.backend.modules.ai.matching.profile.CandidateProfile;
 import com.careerpilot.backend.modules.ai.matching.profile.CompanyProfile;
 import com.careerpilot.backend.modules.ai.matching.profile.JobProfile;
 import com.careerpilot.backend.modules.analytics.services.HistoricalSuccessSignalService;
-import com.careerpilot.backend.modules.auth.domain.User;
-import com.careerpilot.backend.modules.auth.domain.UserRepository;
 import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob;
 import com.careerpilot.backend.modules.discovery.repositories.DiscoveryJobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
@@ -25,7 +21,6 @@ import java.util.UUID;
 public class HistoricalSuccessScorer implements MatchScorer {
 
     private final HistoricalSuccessSignalService historicalSuccessSignalService;
-    private final UserRepository userRepository;
     private final DiscoveryJobRepository discoveryJobRepository;
 
     @Override
@@ -35,9 +30,9 @@ public class HistoricalSuccessScorer implements MatchScorer {
 
     @Override
     public double score(CandidateProfile candidate, CompanyProfile company, JobProfile job) {
-        UUID candidateId = getCurrentUserId();
+        UUID candidateId = candidate.getCandidateId();
         if (candidateId == null) {
-            return 0.0;
+            return NOT_ASSESSABLE;
         }
 
         // Fetch DiscoveryJob to get title, company name, location, and workMode
@@ -80,20 +75,10 @@ public class HistoricalSuccessScorer implements MatchScorer {
         );
 
         if (!signal.isAvailable()) {
-            return 0.0;
+            return NOT_ASSESSABLE; // no history is not evidence of failure
         }
 
         return signal.getHistoricalSuccessScore();
     }
 
-    private UUID getCurrentUserId() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated() && auth.getName() != null) {
-            Optional<User> u = userRepository.findByEmail(auth.getName());
-            if (u.isPresent()) {
-                return u.get().getId();
-            }
-        }
-        return userRepository.findAll().stream().findFirst().map(User::getId).orElse(null);
-    }
 }

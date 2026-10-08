@@ -28,7 +28,6 @@ class AnalyticsTest {
                 null,
                 null,
                 null,
-                new ApplicationWorkflowEngine(),
                 new EligibilityEngine(),
                 new ResumeSelectionEngine(),
                 new ApprovalPolicyEngine(),

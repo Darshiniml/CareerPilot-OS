@@ -29,5 +29,15 @@ public class LearningPathItem {
     private int sequenceNumber;
 
     @Column(name = "prerequisite_steps")
-    private String prerequisiteSteps; // Comma-separated
+    private String prerequisiteSteps;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "estimated_hours")
+    private Double estimatedHours;
+
+    /** Resource suggestions by name and type only; links are never generated. */
+    @Column(name = "resources_json", columnDefinition = "TEXT")
+    private String resourcesJson; // Comma-separated
 }

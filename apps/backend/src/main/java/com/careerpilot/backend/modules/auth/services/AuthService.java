@@ -135,8 +135,8 @@ public class AuthService {
     public LoginResponse refresh(TokenRefreshRequest request) {
         String refreshToken = request.getRefreshToken();
 
-        if (jwtTokenProvider.isTokenExpired(refreshToken)) {
-            throw new IllegalArgumentException("Refresh token has expired");
+        if (refreshToken == null || !jwtTokenProvider.isValidRefreshToken(refreshToken)) {
+            throw new IllegalArgumentException("Invalid or expired refresh token");
         }
 
         String email = jwtTokenProvider.extractUsername(refreshToken);

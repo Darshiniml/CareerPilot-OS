@@ -54,4 +54,18 @@ class JwtTokenProviderTest {
         Thread.sleep(10);
         assertFalse(shortLivedProvider.validateToken(token, userDetails));
     }
+
+    @Test
+    void refreshTokenIsNotAcceptedAsAccessToken() {
+        String refresh = jwtTokenProvider.generateRefreshToken(userDetails);
+        assertFalse(jwtTokenProvider.validateToken(refresh, userDetails));
+        assertTrue(jwtTokenProvider.isValidRefreshToken(refresh));
+    }
+
+    @Test
+    void accessTokenIsNotAcceptedAsRefreshToken() {
+        String access = jwtTokenProvider.generateAccessToken(userDetails);
+        assertFalse(jwtTokenProvider.isValidRefreshToken(access));
+        assertFalse(jwtTokenProvider.isValidRefreshToken("not-a-jwt"));
+    }
 }

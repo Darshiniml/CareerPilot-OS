@@ -1,0 +1,27 @@
+# Local development without Docker: PostgreSQL on localhost, files on the local disk, no Redis
+# (analytics caching falls back to memory). Start with SPRING_PROFILES_ACTIVE=local.
+logging:
+  level:
+    root: INFO
+    com.careerpilot: INFO
+
+security:
+  jwt:
+    # Development-only fallback. Never used outside local/dev profiles.
+    secret-key: ${JWT_SECRET_KEY:dev-only-insecure-jwt-secret-change-me-0123456789abcdef}
+
+spring:
+  data:
+    redis:
+      timeout: 1s
+      connect-timeout: 1s
+
+storage:
+  type: ${STORAGE_TYPE:local}
+  local:
+    dir: ${CAREERPILOT_STORAGE_DIR:${user.home}/.careerpilot/storage}
+
+management:
+  health:
+    redis:
+      enabled: false

@@ -14,4 +14,6 @@ public interface ApplicationTimelineEventRepository extends JpaRepository<Applic
             UUID applicationId, UUID communicationId, TimelineEventType eventType);
 
     List<ApplicationTimelineEvent> findByApplicationIdOrderByEventTimestampAscIdAsc(UUID applicationId);
+
+    Optional<ApplicationTimelineEvent> findTopByApplicationIdAndStateChangedTrueOrderByEventTimestampDesc(UUID applicationId);
 }

@@ -3,12 +3,15 @@ logging:
     root: INFO
     com.careerpilot: DEBUG
     org.springframework.security: INFO
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    # SQL statements only. Bind parameters (BasicBinder TRACE) are not logged: they contain PII
+    # and password hashes.
+    org.hibernate.SQL: INFO
+
+security:
+  jwt:
+    # Development-only fallback. Never used outside the dev profile.
+    secret-key: ${JWT_SECRET_KEY:dev-only-insecure-jwt-secret-change-me-0123456789abcdef}
 
 spring:
   jpa:
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
+    show-sql: false

@@ -16,7 +16,7 @@ public class IndeedJobConnector implements Connector {
     @Value("${indeed.publisher.id:}")
     private String publisherId;
 
-    private boolean enabled = true;
+    private boolean enabled = false; // unsupported source
 
     @Override
     public String getConnectorId() {
@@ -50,25 +50,11 @@ public class IndeedJobConnector implements Connector {
 
     @Override
     public ConnectorHealth healthCheck() {
-        if (!enabled) {
-            return ConnectorHealth.builder()
-                    .connectorId(getConnectorId())
-                    .status(ConnectorHealthStatus.DISABLED)
-                    .message("Connector disabled")
-                    .build();
-        }
-        if (publisherId == null || publisherId.isBlank()) {
-            return ConnectorHealth.builder()
-                    .connectorId(getConnectorId())
-                    .status(ConnectorHealthStatus.UNHEALTHY)
-                    .message("NOT_CONFIGURED: INDEED_PUBLISHER_ID environment variable required")
-                    .build();
-        }
+        // There is no official public job-search API for this source; it is kept registered but unsupported.
         return ConnectorHealth.builder()
                 .connectorId(getConnectorId())
-                .status(ConnectorHealthStatus.HEALTHY)
-                .lastSuccess(Instant.now())
-                .message("Indeed Publisher API configured")
+                .status(ConnectorHealthStatus.DISABLED)
+                .message("UNSUPPORTED: no official public job-search API is available for this source")
                 .build();
     }
 

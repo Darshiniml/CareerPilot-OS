@@ -1,105 +1,203 @@
+"""Real embedding providers.
+
+Every provider calls a real embedding model. There is no constant-vector fallback: when the
+configured provider cannot produce embeddings an ``AIError`` is raised and semantic search reports
+itself unavailable instead of returning meaningless matches.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
 from abc import ABC, abstractmethod
-from typing import List, Optional
-import os
+from typing import Any
+
+import httpx
+
+from app.core.llm.config import SUPPORTED_EMBEDDING_PROVIDERS, EmbeddingConfig
+from app.core.llm.errors import ProviderConfigurationError, ProviderResponseError
+from app.core.llm.providers import _with_retries
+
 
 class EmbeddingProvider(ABC):
-    @abstractmethod
-    def embed_query(self, text: str) -> List[float]:
-        """Generate embedding vector for a single query text."""
-        pass
+    name = "base"
+
+    def __init__(self, config: EmbeddingConfig):
+        self.config = config
+        self.model = config.model
+        self._dimension: int | None = None
 
     @abstractmethod
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Generate embedding vectors for multiple documents."""
-        pass
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        ...
 
-class MockEmbeddingProvider(EmbeddingProvider):
-    def embed_query(self, text: str) -> List[float]:
-        # Returns a mock 1536-dimension float vector
-        return [0.1] * 1536
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        vectors = self._embed(texts)
+        if len(vectors) != len(texts):
+            raise ProviderResponseError(
+                f"{self.name} returned {len(vectors)} embeddings for {len(texts)} inputs", provider=self.name
+            )
+        dims = {len(v) for v in vectors}
+        if len(dims) != 1 or 0 in dims:
+            raise ProviderResponseError(f"{self.name} returned inconsistent embedding sizes {dims}", provider=self.name)
+        dimension = dims.pop()
+        if self._dimension is not None and dimension != self._dimension:
+            raise ProviderResponseError(
+                f"{self.name} embedding dimension changed from {self._dimension} to {dimension}", provider=self.name
+            )
+        self._dimension = dimension
+        return vectors
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return [[0.1] * 1536 for _ in texts]
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_documents([text])[0]
+
+    @property
+    def dimension(self) -> int:
+        if self._dimension is None:
+            self.embed_query("dimension probe")
+        return self._dimension  # type: ignore[return-value]
+
+    def health(self) -> dict[str, Any]:
+        try:
+            dim = self.dimension
+            return {"provider": self.name, "model": self.model, "configured": True, "status": "UP", "dimension": dim}
+        except Exception as exc:  # noqa: BLE001
+            return {"provider": self.name, "model": self.model, "configured": True, "status": "DOWN",
+                    "error": getattr(exc, "message", exc.__class__.__name__)}
+
+
+class OllamaEmbeddingProvider(EmbeddingProvider):
+    name = "ollama"
+
+    def __init__(self, config: EmbeddingConfig):
+        super().__init__(config)
+        if not config.base_url:
+            raise ProviderConfigurationError("OLLAMA_BASE_URL is not configured", provider=self.name)
+        self.base_url = config.base_url.rstrip("/")
+
+    def _embed(self, texts):
+        with httpx.Client(timeout=self.config.timeout_seconds) as client:
+            response = _with_retries(
+                self.name, self.config.max_retries,
+                lambda: client.post(f"{self.base_url}/api/embed",
+                                    json={"model": self.model, "input": texts, "keep_alive": "30m"}),
+            )
+        data = response.json()
+        if "error" in data:
+            raise ProviderResponseError(f"Ollama embedding error: {data['error']}", provider=self.name)
+        return data.get("embeddings") or []
+
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
-    def __init__(self, api_key: str = None, model: str = "text-embedding-3-small"):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.model = model
+    name = "openai"
 
-    def embed_query(self, text: str) -> List[float]:
-        if not self.api_key:
-            return MockEmbeddingProvider().embed_query(text)
-        return [0.2] * 1536
+    def __init__(self, config: EmbeddingConfig):
+        super().__init__(config)
+        if not config.api_key:
+            raise ProviderConfigurationError(
+                "OpenAI embeddings selected but OPENAI_API_KEY (or EMBEDDING_API_KEY) is not set", provider=self.name
+            )
+        self.base_url = (config.base_url or "https://api.openai.com/v1").rstrip("/")
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        if not self.api_key:
-            return MockEmbeddingProvider().embed_documents(texts)
-        return [[0.2] * 1536 for _ in texts]
+    def _embed(self, texts):
+        headers = {"Authorization": f"Bearer {self.config.api_key}"}
+        with httpx.Client(timeout=self.config.timeout_seconds) as client:
+            response = _with_retries(
+                self.name, self.config.max_retries,
+                lambda: client.post(f"{self.base_url}/embeddings", headers=headers,
+                                    json={"model": self.model, "input": texts}),
+            )
+        data = sorted(response.json().get("data", []), key=lambda d: d.get("index", 0))
+        return [d["embedding"] for d in data]
+
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
-    def __init__(self, api_key: str = None, model: str = "models/embedding-001"):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model = model
+    name = "gemini"
 
-    def embed_query(self, text: str) -> List[float]:
-        if not self.api_key:
-            return MockEmbeddingProvider().embed_query(text)
-        return [0.3] * 768
+    def __init__(self, config: EmbeddingConfig):
+        super().__init__(config)
+        if not config.api_key:
+            raise ProviderConfigurationError(
+                "Gemini embeddings selected but GEMINI_API_KEY (or EMBEDDING_API_KEY) is not set", provider=self.name
+            )
+        self.base_url = (config.base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        if not self.api_key:
-            return MockEmbeddingProvider().embed_documents(texts)
-        return [[0.3] * 768 for _ in texts]
+    def _embed(self, texts):
+        model_path = self.model if self.model.startswith("models/") else f"models/{self.model}"
+        body = {"requests": [{"model": model_path, "content": {"parts": [{"text": t}]}} for t in texts]}
+        headers = {"x-goog-api-key": self.config.api_key or ""}
+        with httpx.Client(timeout=self.config.timeout_seconds) as client:
+            response = _with_retries(
+                self.name, self.config.max_retries,
+                lambda: client.post(f"{self.base_url}/{model_path}:batchEmbedContents", headers=headers, json=body),
+            )
+        return [e["values"] for e in response.json().get("embeddings", [])]
+
 
 class SentenceTransformersProvider(EmbeddingProvider):
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.model_name = model_name
+    name = "sentence-transformers"
+    _lock = threading.Lock()
+
+    def __init__(self, config: EmbeddingConfig):
+        super().__init__(config)
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError as exc:
+            raise ProviderConfigurationError(
+                "EMBEDDING_PROVIDER=sentence-transformers but the 'sentence-transformers' package is not installed",
+                provider=self.name,
+            ) from exc
         self._model = None
 
-    def _get_model(self):
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self.model_name)
-        return self._model
+    def _embed(self, texts):
+        with self._lock:
+            if self._model is None:
+                from sentence_transformers import SentenceTransformer
 
-    def embed_query(self, text: str) -> List[float]:
-        try:
-            vector = self._get_model().encode(text)
-            return vector.tolist()
-        except Exception:
-            return MockEmbeddingProvider().embed_query(text)
+                self._model = SentenceTransformer(self.model)
+        return self._model.encode(texts, normalize_embeddings=True).tolist()
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        try:
-            vectors = self._get_model().encode(texts)
-            return vectors.tolist()
-        except Exception:
-            return MockEmbeddingProvider().embed_documents(texts)
 
-# Registry
-class EmbeddingProviderRegistry:
-    def __init__(self):
-        self._providers = {}
+_PROVIDERS = {
+    "ollama": OllamaEmbeddingProvider,
+    "openai": OpenAIEmbeddingProvider,
+    "gemini": GeminiEmbeddingProvider,
+    "sentence-transformers": SentenceTransformersProvider,
+}
 
-    def register(self, name: str, provider_class):
-        self._providers[name.lower()] = provider_class
 
-    def get_provider(self, name: str, **kwargs) -> EmbeddingProvider:
-        name_lower = name.lower()
-        if name_lower not in self._providers:
-            return MockEmbeddingProvider()
-        return self._providers[name_lower](**kwargs)
+def build_embedding_provider(config: EmbeddingConfig) -> EmbeddingProvider:
+    cls = _PROVIDERS.get(config.provider)
+    if cls is None:
+        raise ProviderConfigurationError(
+            f"Unknown EMBEDDING_PROVIDER '{config.provider}'. Supported: {', '.join(SUPPORTED_EMBEDDING_PROVIDERS)}"
+        )
+    return cls(config)
 
-    def get_registered_names(self):
-        return list(self._providers.keys())
 
-embedding_registry = EmbeddingProviderRegistry()
-embedding_registry.register("mock", MockEmbeddingProvider)
-embedding_registry.register("openai", OpenAIEmbeddingProvider)
-embedding_registry.register("gemini", GeminiEmbeddingProvider)
-embedding_registry.register("sentence-transformers", SentenceTransformersProvider)
+_provider: EmbeddingProvider | None = None
+_provider_lock = threading.Lock()
 
-def get_embedding_provider(provider_name: str = None, **kwargs) -> EmbeddingProvider:
-    from app.core.config import settings
-    provider_name = provider_name or settings.active_embedding_provider
-    return embedding_registry.get_provider(provider_name, **kwargs)
+
+def get_embedding_provider() -> EmbeddingProvider:
+    global _provider
+    with _provider_lock:
+        if _provider is None:
+            _provider = build_embedding_provider(EmbeddingConfig.from_env())
+        return _provider
+
+
+def set_embedding_provider(provider: EmbeddingProvider | None) -> None:
+    global _provider
+    with _provider_lock:
+        _provider = provider
+
+
+def registered_embedding_providers() -> list[str]:
+    return list(_PROVIDERS.keys())
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)

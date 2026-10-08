@@ -1,11 +1,10 @@
 package com.careerpilot.backend.modules.interview.adapters.in.web;
 
-import com.careerpilot.backend.modules.auth.domain.UserRepository;
-import com.careerpilot.backend.modules.interview.domain.InterviewKnowledge;
+import com.careerpilot.backend.config.CurrentUser;
+import com.careerpilot.backend.modules.interview.domain.InterviewQuestion;
 import com.careerpilot.backend.modules.interview.domain.InterviewSession;
-import com.careerpilot.backend.modules.interview.domain.InterviewType;
-import com.careerpilot.backend.modules.interview.repositories.InterviewSessionRepository;
-import com.careerpilot.backend.modules.interview.services.*;
+import com.careerpilot.backend.modules.interview.services.InterviewCoachService;
+import com.careerpilot.backend.modules.interview.services.InterviewCoachService.StartSessionCommand;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -16,100 +15,64 @@ import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
+/** AI interview coach. Every session belongs to the authenticated candidate. */
 @RestController
 @RequestMapping("/api/v1/interview")
-@Tag(name = "Interview Intelligence", description = "Deterministic interview preparation APIs")
+@Tag(name = "Interview Coach", description = "AI-generated practice interviews with rubric-based answer evaluation")
 @RequiredArgsConstructor
 public class InterviewController {
 
-    private final InterviewPlannerService plannerService;
-    private final QuestionGeneratorService questionGeneratorService;
-    private final MockInterviewService mockInterviewService;
-    private final AnswerEvaluatorService answerEvaluatorService;
-    private final FeedbackEngineService feedbackEngineService;
-    private final ReadinessService readinessService;
-    private final LearningRecommendationService learningRecommendationService;
-    private final InterviewSessionRepository sessionRepository;
-    private final UserRepository userRepository;
+    private final InterviewCoachService coachService;
+    private final CurrentUser currentUser;
 
-    @PostMapping("/prepare")
-    @Operation(summary = "Prepare interview knowledge and plan")
-    public ResponseEntity<InterviewKnowledge> prepare(@RequestBody PrepareRequest request) {
-        InterviewKnowledge knowledge = plannerService.buildKnowledge(request.applicationId(), request.candidateId(), request.companyId(), request.jobId(), request.stage(), request.interviewType());
-        return ResponseEntity.status(HttpStatus.CREATED).body(knowledge);
-    }
-
-    @PostMapping("/questions")
-    public ResponseEntity<List<Map<String, Object>>> questions(@RequestBody InterviewKnowledge knowledge) {
-        return ResponseEntity.ok(questionGeneratorService.generateQuestions(knowledge));
-    }
-
-    @PostMapping("/start")
-    public ResponseEntity<InterviewSession> start(@RequestBody StartRequest request) {
-        InterviewSession session = mockInterviewService.startSession(request.applicationId(), request.candidateId(), request.interviewType());
+    @PostMapping("/sessions")
+    @Operation(summary = "Start a practice interview generated from a job (or a target role) and your profile")
+    public ResponseEntity<InterviewSession> start(@RequestBody StartRequest request, Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        InterviewSession session = coachService.startSession(userId, new StartSessionCommand(
+                request.jobId(), request.applicationId(), request.targetRole(), request.targetCompany(),
+                request.jobDescription(), request.questionTypes(), request.difficulty(), request.questionCount()));
         return ResponseEntity.status(HttpStatus.CREATED).body(session);
     }
 
-    @PostMapping("/answer")
-    public ResponseEntity<Map<String, Object>> answer(@RequestBody AnswerRequest request) {
-        InterviewSession session = mockInterviewService.startSession(request.applicationId(), request.candidateId(), request.interviewType());
-        var question = mockInterviewService.answerQuestion(session, request.question(), request.answer(), request.timeTakenSeconds());
-        var evaluated = answerEvaluatorService.evaluate(question);
-        return ResponseEntity.ok(Map.of("question", evaluated.getQuestionText(), "feedback", evaluated.getEvaluationFeedback()));
+    @PostMapping("/sessions/{sessionId}/answers")
+    @Operation(summary = "Submit an answer; the AI evaluates it against the question's criteria")
+    public ResponseEntity<InterviewQuestion> answer(@PathVariable UUID sessionId, @RequestBody AnswerRequest request,
+                                                    Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        return ResponseEntity.ok(coachService.answer(userId, sessionId, request.questionId(), request.answer(),
+                request.timeTakenSeconds()));
     }
 
-    @PostMapping("/evaluate")
-    public ResponseEntity<Map<String, Object>> evaluate(@RequestBody EvaluateRequest request) {
-        return ResponseEntity.ok(Map.of("feedback", feedbackEngineService.buildFeedback(null)));
+    @PostMapping("/sessions/{sessionId}/complete")
+    @Operation(summary = "Finish the session and get AI feedback across all answers")
+    public ResponseEntity<InterviewSession> complete(@PathVariable UUID sessionId, Principal principal) {
+        return ResponseEntity.ok(coachService.complete(currentUser.requireId(principal), sessionId));
     }
 
-    @GetMapping("/history")
+    @GetMapping("/sessions/{sessionId}")
+    public ResponseEntity<InterviewSession> get(@PathVariable UUID sessionId, Principal principal) {
+        return ResponseEntity.ok(coachService.get(currentUser.requireId(principal), sessionId));
+    }
+
+    @GetMapping({"/sessions", "/history"})
     public ResponseEntity<List<InterviewSession>> history(Principal principal) {
-        if (principal == null) {
-            return ResponseEntity.ok(List.of());
-        }
-        UUID userId = getUserId(principal);
-        return ResponseEntity.ok(sessionRepository.findByCandidateId(userId));
-    }
-
-    @GetMapping("/{sessionId}")
-    public ResponseEntity<InterviewSession> byId(Principal principal, @PathVariable UUID sessionId) {
-        Optional<InterviewSession> sessionOpt = sessionRepository.findById(sessionId);
-        if (sessionOpt.isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-        InterviewSession session = sessionOpt.get();
-        if (principal != null) {
-            UUID userId = getUserId(principal);
-            if (!session.getCandidateId().equals(userId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-        }
-        return ResponseEntity.ok(session);
+        return ResponseEntity.ok(coachService.history(currentUser.requireId(principal)));
     }
 
     @GetMapping("/readiness")
-    public ResponseEntity<Map<String, Object>> readiness() {
-        return ResponseEntity.ok(readinessService.calculateReadiness(0.78, 0.74, 0.72, 0.76, 0.69));
+    @Operation(summary = "Interview readiness computed from your answered practice questions")
+    public ResponseEntity<Map<String, Object>> readiness(Principal principal) {
+        return ResponseEntity.ok(coachService.readiness(currentUser.requireId(principal)));
     }
 
-    @PostMapping("/recommendations")
-    public ResponseEntity<List<Map<String, Object>>> recommendations(@RequestBody RecommendationRequest request) {
-        return ResponseEntity.ok(learningRecommendationService.generateRecommendations(request.readinessScore()));
+    public record StartRequest(UUID jobId, UUID applicationId, String targetRole, String targetCompany,
+                               String jobDescription, List<String> questionTypes, String difficulty,
+                               Integer questionCount) {
     }
 
-    private UUID getUserId(Principal principal) {
-        return userRepository.findByEmail(principal.getName())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"))
-                .getId();
+    public record AnswerRequest(UUID questionId, String answer, Integer timeTakenSeconds) {
     }
-
-    public record PrepareRequest(UUID applicationId, UUID candidateId, UUID companyId, UUID jobId, String stage, String interviewType) {}
-    public record StartRequest(UUID applicationId, UUID candidateId, InterviewType interviewType) {}
-    public record AnswerRequest(UUID applicationId, UUID candidateId, InterviewType interviewType, String question, String answer, int timeTakenSeconds) {}
-    public record EvaluateRequest(UUID sessionId) {}
-    public record RecommendationRequest(double readinessScore) {}
 }

@@ -1,133 +1,80 @@
 package com.careerpilot.backend.modules.ai.events;
 
-import com.careerpilot.backend.modules.ai.task.domain.*;
-import com.careerpilot.backend.modules.ai.task.repositories.*;
-import com.careerpilot.backend.modules.ai.task.services.AiTaskDispatcher;
-import com.careerpilot.shared.events.*;
+import com.careerpilot.backend.modules.ai.gateway.exceptions.AiServiceException;
+import com.careerpilot.backend.modules.ai.knowledge.domain.AiDocument;
+import com.careerpilot.backend.modules.ai.knowledge.repositories.AiDocumentRepository;
+import com.careerpilot.backend.modules.ai.knowledge.services.KnowledgePipelineService;
+import com.careerpilot.backend.modules.ai.matching.MatchingCache;
+import com.careerpilot.backend.modules.resume.domain.ResumeVersion;
+import com.careerpilot.backend.modules.resume.repositories.ResumeVersionRepository;
+import com.careerpilot.shared.events.PreferencesUpdatedEvent;
+import com.careerpilot.shared.events.ResumeDeletedEvent;
+import com.careerpilot.shared.events.ResumeUploadedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
+/**
+ * Keeps AI-derived state consistent with candidate data changes.
+ *
+ * <ul>
+ *   <li>Resume uploaded / preferences updated: cached match results for the candidate are evicted
+ *       (resume processing itself is done by {@code ResumeProcessingService}).</li>
+ *   <li>Resume deleted: the resume's vectors are removed from the vector store and its AI documents
+ *       archived, so deleted content can no longer be retrieved.</li>
+ * </ul>
+ */
 @Component
 @Slf4j
 public class AiEventConsumer {
 
-    private final AiWorkflowRepository workflowRepository;
-    private final AiTaskRepository taskRepository;
-    private final AiTaskDispatcher taskDispatcher;
+    private final ResumeVersionRepository versionRepository;
+    private final AiDocumentRepository documentRepository;
+    private final KnowledgePipelineService pipelineService;
+    private final MatchingCache matchingCache;
 
-    public AiEventConsumer(
-            AiWorkflowRepository workflowRepository,
-            AiTaskRepository taskRepository,
-            AiTaskDispatcher taskDispatcher) {
-        this.workflowRepository = workflowRepository;
-        this.taskRepository = taskRepository;
-        this.taskDispatcher = taskDispatcher;
+    public AiEventConsumer(ResumeVersionRepository versionRepository,
+                           AiDocumentRepository documentRepository,
+                           KnowledgePipelineService pipelineService,
+                           MatchingCache matchingCache) {
+        this.versionRepository = versionRepository;
+        this.documentRepository = documentRepository;
+        this.pipelineService = pipelineService;
+        this.matchingCache = matchingCache;
     }
 
     @EventListener
-    @Transactional
     public void handleResumeUploaded(ResumeUploadedEvent event) {
-        log.info("Received ResumeUploadedEvent for resume ID: {} and user ID: {}", event.getResumeId(), event.getUserId());
-
-        AiWorkflow workflow = AiWorkflow.builder()
-                .id(UUID.randomUUID())
-                .name("Resume Upload Processing - " + event.getResumeId())
-                .status("CREATED")
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build();
-        workflowRepository.save(workflow);
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("resumeId", event.getResumeId().toString());
-        payload.put("userId", event.getUserId().toString());
-        payload.put("fileUrl", event.getFileUrl());
-        payload.put("fileName", event.getFileName());
-
-        AiTask task = AiTask.builder()
-                .id(UUID.randomUUID())
-                .workflow(workflow)
-                .taskType("RESUME_PARSE")
-                .status("CREATED")
-                .priority("HIGH")
-                .correlationId(event.getCorrelationId() != null ? event.getCorrelationId().toString() : UUID.randomUUID().toString())
-                .createdBy(event.getUserId())
-                .payload(payload)
-                .metadata(new HashMap<>())
-                .createdAt(Instant.now())
-                .build();
-        taskRepository.save(task);
-
-        taskDispatcher.dispatch(task);
+        matchingCache.evictCandidate(event.getUserId());
     }
 
+    @Async
     @EventListener
-    @Transactional
     public void handleResumeDeleted(ResumeDeletedEvent event) {
-        log.info("Received ResumeDeletedEvent for resume ID: {} and user ID: {}", event.getResumeId(), event.getUserId());
-
-        AiWorkflow workflow = AiWorkflow.builder()
-                .id(UUID.randomUUID())
-                .name("Resume Deletion Sync - " + event.getResumeId())
-                .status("CREATED")
-                .build();
-        workflowRepository.save(workflow);
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("resumeId", event.getResumeId().toString());
-        payload.put("userId", event.getUserId().toString());
-
-        AiTask task = AiTask.builder()
-                .id(UUID.randomUUID())
-                .workflow(workflow)
-                .taskType("GENERATE_EMBEDDINGS")
-                .status("CREATED")
-                .priority("MEDIUM")
-                .correlationId(event.getCorrelationId() != null ? event.getCorrelationId().toString() : UUID.randomUUID().toString())
-                .createdBy(event.getUserId())
-                .payload(payload)
-                .metadata(new HashMap<>())
-                .build();
-        taskRepository.save(task);
-
-        taskDispatcher.dispatch(task);
+        matchingCache.evictCandidate(event.getUserId());
+        for (ResumeVersion version : versionRepository.findByResumeIdOrderByVersionNumberDesc(event.getResumeId())) {
+            documentRepository.findById(version.getId())
+                    .filter(doc -> event.getUserId().equals(doc.getOwnerId()))
+                    .ifPresent(this::archive);
+        }
     }
 
     @EventListener
-    @Transactional
     public void handlePreferencesUpdated(PreferencesUpdatedEvent event) {
-        log.info("Received PreferencesUpdatedEvent for user ID: {}", event.getUserId());
+        matchingCache.evictCandidate(event.getUserId());
+    }
 
-        AiWorkflow workflow = AiWorkflow.builder()
-                .id(UUID.randomUUID())
-                .name("Preferences Match Processing - " + event.getUserId())
-                .status("CREATED")
-                .build();
-        workflowRepository.save(workflow);
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("userId", event.getUserId().toString());
-
-        AiTask task = AiTask.builder()
-                .id(UUID.randomUUID())
-                .workflow(workflow)
-                .taskType("JOB_MATCH")
-                .status("CREATED")
-                .priority("LOW")
-                .correlationId(event.getCorrelationId() != null ? event.getCorrelationId().toString() : UUID.randomUUID().toString())
-                .createdBy(event.getUserId())
-                .payload(payload)
-                .metadata(new HashMap<>())
-                .build();
-        taskRepository.save(task);
-
-        taskDispatcher.dispatch(task);
+    private void archive(AiDocument doc) {
+        try {
+            pipelineService.removeFromIndex(doc);
+        } catch (AiServiceException e) {
+            log.warn("Could not remove vectors of document {} ({}); it is archived and excluded from use", doc.getId(), e.getCode());
+        }
+        doc.setStatus("ARCHIVED");
+        doc.setUpdatedAt(Instant.now());
+        documentRepository.save(doc);
     }
 }

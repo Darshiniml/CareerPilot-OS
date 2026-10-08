@@ -1,5 +1,7 @@
 package com.careerpilot.backend.modules.ai.company.services;
 
+import com.careerpilot.backend.modules.ai.web.SafeWebPageFetcher;
+
 import com.careerpilot.backend.modules.ai.company.domain.CompanyIntelligenceCache;
 import com.careerpilot.backend.modules.ai.company.repositories.CompanyIntelligenceCacheRepository;
 import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
@@ -22,6 +24,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 class CompanyIntelligenceServiceTest {
+
+    private final SafeWebPageFetcher webPageFetcher = Mockito.mock(SafeWebPageFetcher.class);
 
     private AiDocumentRepository documentRepository;
     private CompanyIntelligenceCacheRepository cacheRepository;
@@ -46,7 +50,8 @@ class CompanyIntelligenceServiceTest {
                 cacheRepository,
                 pipelineService,
                 gatewayClient,
-                eventPublisher
+                eventPublisher,
+                webPageFetcher
         );
 
         documentId = UUID.randomUUID();
@@ -131,9 +136,16 @@ class CompanyIntelligenceServiceTest {
         // Setup repository mock mapping for final pipeline document find
         Mockito.when(documentRepository.findById(any(UUID.class))).thenReturn(Optional.of(mockDoc));
 
-        AiDocument result = companyIntelligenceService.processCompanyUrl(ownerId, "https://google.com");
+        Mockito.when(webPageFetcher.fetch("https://acme.example/about")).thenReturn(
+                new SafeWebPageFetcher.FetchedPage("https://acme.example/about", "About Acme", "Acme Payments builds payment infrastructure for online merchants across India. Our engineering team uses Java, Kotlin, PostgreSQL and Kubernetes on AWS. We value ownership, code review and continuous delivery, and we hire engineers who enjoy working closely with product teams."));
+
+        AiDocument result = companyIntelligenceService.processCompanyUrl(ownerId, "https://acme.example/about");
 
         assertEquals("Google Website", result.getTitle());
+        // The fetched page text (not canned company text) is what gets analysed.
+        org.mockito.Mockito.verify(gatewayClient, org.mockito.Mockito.atLeastOnce()).executeTask(
+                org.mockito.ArgumentMatchers.argThat(req -> "COMPANY_PARSE".equals(req.getTaskType())
+                        && String.valueOf(req.getPayload().get("content")).startsWith("Acme Payments builds")));
         // Verify 1 discovered event + 7 pipeline chain = 8 events
         verify(eventPublisher, times(8)).publishEvent(any(Object.class));
     }

@@ -1,170 +1,181 @@
 package com.careerpilot.backend.modules.ai.resume.adapters.in.web;
 
-import com.careerpilot.backend.modules.ai.knowledge.domain.AiDocument;
-import com.careerpilot.backend.modules.ai.knowledge.repositories.AiDocumentRepository;
-import com.careerpilot.backend.modules.ai.resume.domain.ResumeValidationReport;
-import com.careerpilot.backend.modules.ai.resume.repositories.ResumeValidationReportRepository;
-import com.careerpilot.backend.modules.ai.resume.services.ResumeIntelligenceService;
+import com.careerpilot.backend.config.CurrentUser;
+import com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService;
+import com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService.ResumeKnowledge;
 import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
-import com.careerpilot.backend.modules.auth.domain.User;
-import com.careerpilot.backend.modules.auth.domain.UserRepository;
-import com.careerpilot.shared.dto.ai.AiTaskRequestDto;
-import com.careerpilot.shared.dto.ai.AiTaskResponseDto;
+import com.careerpilot.backend.modules.ai.job.services.JobContextService;
+import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob;
+import com.careerpilot.backend.modules.resume.domain.Resume;
 import com.careerpilot.backend.modules.resume.repositories.ResumeRepository;
-import java.time.Instant;
+import com.careerpilot.backend.modules.resume.services.ResumeProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
+/**
+ * Resume intelligence for the authenticated candidate only. Every lookup is scoped to the caller's
+ * own resumes; there is no cross-candidate access and no placeholder resume text.
+ */
 @RestController
 @RequestMapping("/api/v1/ai/resume")
-@Tag(name = "Resume Intelligence Engine", description = "Endpoints for parsing candidates CVs, skill mapping taxonomies, and scoring ATS coverage metrics")
+@Tag(name = "Resume Intelligence Engine", description = "AI resume parsing, ATS analysis, semantic search and job-specific optimisation")
 @SecurityRequirement(name = "bearerAuth")
 public class ResumeIntelligenceController {
 
-    private final AiDocumentRepository documentRepository;
-    private final ResumeValidationReportRepository validationReportRepository;
-    private final ResumeIntelligenceService resumeIntelligenceService;
-    private final AiGatewayClient gatewayClient;
-    private final UserRepository userRepository;
     private final ResumeRepository resumeRepository;
+    private final ResumeProcessingService processingService;
+    private final CandidateKnowledgeService candidateKnowledgeService;
+    private final JobContextService jobContextService;
+    private final AiGatewayClient gatewayClient;
+    private final CurrentUser currentUser;
 
-    public ResumeIntelligenceController(
-            AiDocumentRepository documentRepository,
-            ResumeValidationReportRepository validationReportRepository,
-            ResumeIntelligenceService resumeIntelligenceService,
-            AiGatewayClient gatewayClient,
-            UserRepository userRepository,
-            ResumeRepository resumeRepository) {
-        this.documentRepository = documentRepository;
-        this.validationReportRepository = validationReportRepository;
-        this.resumeIntelligenceService = resumeIntelligenceService;
-        this.gatewayClient = gatewayClient;
-        this.userRepository = userRepository;
+    public ResumeIntelligenceController(ResumeRepository resumeRepository,
+                                        ResumeProcessingService processingService,
+                                        CandidateKnowledgeService candidateKnowledgeService,
+                                        JobContextService jobContextService,
+                                        AiGatewayClient gatewayClient,
+                                        CurrentUser currentUser) {
         this.resumeRepository = resumeRepository;
+        this.processingService = processingService;
+        this.candidateKnowledgeService = candidateKnowledgeService;
+        this.jobContextService = jobContextService;
+        this.gatewayClient = gatewayClient;
+        this.currentUser = currentUser;
     }
 
+    /** Re-run text extraction + AI analysis for one of the caller's resumes (asynchronous). */
     @PostMapping("/process")
-    @Operation(summary = "Process uploaded resume document", description = "Triggers section parsing, skill mapping, ATS calculations, and Qdrant indexing")
-    public ResponseEntity<?> processResume(
-            @RequestBody Map<String, String> body,
-            Principal principal) {
-
-        String resumeId = body.get("resumeId");
-        String documentId = body.get("documentId");
-
-        // Resolve the AiDocument — prefer explicit documentId, fall back to user's latest resume document
-        AiDocument doc = null;
-        if (documentId != null && !documentId.isBlank()) {
-            doc = documentRepository.findById(UUID.fromString(documentId)).orElse(null);
-        }
-        if (doc == null && principal != null) {
-            User user = userRepository.findByEmail(principal.getName()).orElse(null);
-            if (user != null) {
-                doc = documentRepository
-                        .findFirstByOwnerIdAndDocumentTypeOrderByCreatedAtDesc(user.getId(), "RESUME")
-                        .orElse(null);
-            }
-        }
-        if (doc == null && resumeId != null && !resumeId.isBlank()) {
-            // Last resort: try the resumeId directly as an AiDocument ID or build it on demand from uploaded Resume
+    @Operation(summary = "(Re)process a resume: extract text, AI parse, ATS analysis, vector index")
+    public ResponseEntity<Map<String, Object>> processResume(@RequestBody Map<String, String> body, Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        UUID resumeId = parseId(body.get("resumeId"), "resumeId");
+        Resume resume = ownedResume(userId, resumeId);
+        CompletableFuture.runAsync(() -> {
             try {
-                UUID rId = UUID.fromString(resumeId);
-                doc = documentRepository.findById(rId).orElse(null);
-                if (doc == null) {
-                    com.careerpilot.backend.modules.resume.domain.Resume resume = resumeRepository.findById(rId).orElse(null);
-                    if (resume != null) {
-                        doc = AiDocument.builder()
-                                .id(rId)
-                                .ownerId(resume.getUser().getId())
-                                .documentType("RESUME")
-                                .title(resume.getTitle())
-                                .content("Skills: Java, Spring Boot, React, Microservices, PostgreSQL, Docker.\n" +
-                                         "Experience: Software Engineer with 3+ years experience.")
-                                .status("CREATED")
-                                .createdAt(Instant.now())
-                                .updatedAt(Instant.now())
-                                .build();
-                        doc = documentRepository.save(doc);
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        if (doc == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "No processed resume document found. Please upload a resume first."));
-        }
-
-        AiDocument result = resumeIntelligenceService.processResume(doc.getId());
-        return ResponseEntity.ok(result);
-    }
-
-    @GetMapping("/{id}")
-    @Operation(summary = "Get parsed Resume Knowledge")
-    public ResponseEntity<Map<String, Object>> getResumeKnowledge(
-            @PathVariable("id") String id,
-            Principal principal) {
-        AiDocument doc = resolveDocument(id, principal);
-        if (doc == null) return ResponseEntity.ok(new HashMap<>());
-        Map<String, Object> result = new HashMap<>();
-        result.put("id", doc.getId());
-        result.put("status", doc.getStatus());
-        result.put("structuredKnowledge", doc.getStructuredMetadata());
-        return ResponseEntity.ok(result);
-    }
-
-    @GetMapping("/{id}/ats")
-    @Operation(summary = "Get ATS quality metrics & reports")
-    public ResponseEntity<Map<String, Object>> getResumeAts(
-            @PathVariable("id") String id,
-            Principal principal) {
-        AiDocument doc = resolveDocument(id, principal);
-        if (doc == null) return ResponseEntity.ok(new HashMap<>());
-        return ResponseEntity.ok(doc.getFlexibleMetadata() != null ? doc.getFlexibleMetadata() : new HashMap<>());
-    }
-
-    /** Resolve AiDocument: try direct UUID, then fall back to user's latest RESUME document */
-    private AiDocument resolveDocument(String id, Principal principal) {
-        // Try as direct AiDocument UUID
-        try {
-            UUID uuid = UUID.fromString(id);
-            AiDocument doc = documentRepository.findById(uuid).orElse(null);
-            if (doc != null) return doc;
-        } catch (Exception ignored) {}
-
-        // Fall back to user's latest resume document
-        if (principal != null) {
-            User user = userRepository.findByEmail(principal.getName()).orElse(null);
-            if (user != null) {
-                return documentRepository
-                        .findFirstByOwnerIdAndDocumentTypeOrderByCreatedAtDesc(user.getId(), "RESUME")
-                        .orElse(null);
+                processingService.processLatestVersion(userId, resumeId);
+            } catch (RuntimeException ignored) {
+                // status and error are recorded on the resume
             }
-        }
-        return null;
+        });
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+                "resumeId", resume.getId(), "aiProcessingStatus", "PROCESSING"));
     }
 
+    /** Lightweight summary used by the dashboard / career-search profile. */
+    @GetMapping("/parse-summary")
+    public ResponseEntity<Map<String, Object>> parseSummary(@RequestParam(value = "resumeId", required = false) String resumeId,
+                                                            Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        Optional<ResumeKnowledge> knowledge = resumeId == null || resumeId.isBlank()
+                ? candidateKnowledgeService.primaryResume(userId)
+                : candidateKnowledgeService.resumeKnowledge(userId, parseId(resumeId, "resumeId"));
+        if (knowledge.isEmpty()) {
+            return ResponseEntity.ok(Map.of("available", false));
+        }
+        Map<String, Object> k = knowledge.get().knowledge();
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("available", true);
+        summary.put("resumeId", knowledge.get().resumeId());
+        summary.put("versionNumber", knowledge.get().versionNumber());
+        summary.put("skills", k.getOrDefault("skills", List.of()));
+        summary.put("experience", k.getOrDefault("experience", List.of()));
+        summary.put("education", k.getOrDefault("education", List.of()));
+        summary.put("intelligence", k.getOrDefault("intelligence", Map.of()));
+        summary.put("atsScore", knowledge.get().atsMetrics().get("atsScore"));
+        return ResponseEntity.ok(summary);
+    }
+
+    @GetMapping("/{resumeId}")
+    @Operation(summary = "Parsed knowledge of the newest processed version of one of my resumes")
+    public ResponseEntity<Map<String, Object>> getResumeKnowledge(@PathVariable("resumeId") UUID resumeId, Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        Resume resume = ownedResume(userId, resumeId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("resumeId", resumeId);
+        result.put("aiProcessingStatus", resume.getAiProcessingStatus());
+        result.put("processingError", resume.getAiProcessingError());
+        candidateKnowledgeService.resumeKnowledge(userId, resumeId).ifPresentOrElse(k -> {
+            result.put("documentId", k.documentId());
+            result.put("versionNumber", k.versionNumber());
+            result.put("structuredKnowledge", k.knowledge());
+        }, () -> result.put("structuredKnowledge", null));
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{resumeId}/ats")
+    @Operation(summary = "ATS metrics and AI review for one of my resumes")
+    public ResponseEntity<Map<String, Object>> getResumeAts(@PathVariable("resumeId") UUID resumeId, Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        ownedResume(userId, resumeId);
+        return ResponseEntity.ok(candidateKnowledgeService.resumeKnowledge(userId, resumeId)
+                .map(ResumeKnowledge::atsMetrics)
+                .orElse(Map.of()));
+    }
+
+    /** Semantic search across the caller's OWN resume content (never other candidates). */
     @PostMapping("/search")
-    @Operation(summary = "Retrieve matching candidates by semantic skills & experience parameters")
-    public ResponseEntity<Map<String, Object>> searchResumes(
-            @RequestParam("query") String query,
-            @RequestParam(value = "limit", defaultValue = "5") int limit) {
-        
+    public ResponseEntity<Map<String, Object>> searchMyResumes(@RequestBody Map<String, Object> body, Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        String query = body.get("query") instanceof String q ? q.trim() : "";
+        if (query.isEmpty()) {
+            throw new IllegalArgumentException("query is required");
+        }
         Map<String, Object> payload = new HashMap<>();
         payload.put("query", query);
-        payload.put("collection", "resume_vectors");
+        payload.put("documentType", "RESUME");
+        payload.put("ownerId", userId.toString());
+        payload.put("limit", body.get("limit") instanceof Number n ? n.intValue() : 5);
+        return ResponseEntity.ok(gatewayClient.run("RESUME_SEARCH", payload));
+    }
 
-        AiTaskRequestDto request = AiTaskRequestDto.builder()
-                .taskId(UUID.randomUUID())
-                .taskType("JOB_MATCH")
-                .payload(payload)
-                .build();
+    /** Job-specific optimisation suggestions. Rewording only; invented claims are flagged. */
+    @PostMapping("/{resumeId}/optimize")
+    @Operation(summary = "Tailor one of my resumes to a specific job")
+    public ResponseEntity<Map<String, Object>> optimize(@PathVariable("resumeId") UUID resumeId,
+                                                        @RequestBody Map<String, String> body,
+                                                        Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        ownedResume(userId, resumeId);
+        ResumeKnowledge knowledge = candidateKnowledgeService.resumeKnowledge(userId, resumeId)
+                .orElseThrow(() -> new IllegalStateException("This resume has not been processed yet"));
+        DiscoveryJob job = jobContextService.requireJob(parseId(body.get("jobId"), "jobId"));
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("resumeText", knowledge.text());
+        payload.put("jobDescription", jobContextService.jobText(job));
+        payload.put("context", Map.of("targetRole", Objects.toString(job.getTitle(), ""),
+                "targetCompany", Objects.toString(job.getCompany(), "")));
+        Map<String, Object> result = new LinkedHashMap<>(gatewayClient.run("RESUME_OPTIMIZE", payload));
+        result.put("resumeId", resumeId);
+        result.put("resumeVersion", knowledge.versionNumber());
+        result.put("jobId", job.getId());
+        return ResponseEntity.ok(result);
+    }
 
-        AiTaskResponseDto response = gatewayClient.executeTask(request);
-        return ResponseEntity.ok(response.getResult());
+    private Resume ownedResume(UUID userId, UUID resumeId) {
+        Resume resume = resumeRepository.findActiveById(resumeId)
+                .orElseThrow(() -> new NoSuchElementException("Resume not found"));
+        if (!resume.getUser().getId().equals(userId)) {
+            throw new NoSuchElementException("Resume not found");
+        }
+        return resume;
+    }
+
+    private static UUID parseId(String raw, String name) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException(name + " is required");
+        }
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(name + " must be a valid id");
+        }
     }
 }

@@ -1,5 +1,8 @@
 package com.careerpilot.backend.modules.agent.services;
 
+import com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService;
+import com.careerpilot.backend.modules.ai.matching.MatchService;
+
 import com.careerpilot.backend.modules.agent.domain.*;
 import com.careerpilot.backend.modules.ai.company.domain.CompanyIntelligenceCache;
 import com.careerpilot.backend.modules.ai.company.repositories.CompanyIntelligenceCacheRepository;
@@ -29,27 +32,21 @@ import java.util.stream.Collectors;
 public class MatchingAgent implements CareerAgent {
 
     private final JobDiscoveryService jobDiscoveryService;
-    private final MatchingEngine matchingEngine;
-    private final DataCollector dataCollector;
-    private final JobIntelligenceCacheRepository jobCacheRepository;
-    private final CompanyIntelligenceCacheRepository companyCacheRepository;
+    private final MatchService matchService;
+    private final CandidateKnowledgeService candidateKnowledgeService;
     private final ApplicationEventPublisher eventPublisher;
     private final JobDiscoveryAgent jobDiscoveryAgent;
     private final OpportunityPrioritizationService prioritizationService;
 
     public MatchingAgent(JobDiscoveryService jobDiscoveryService,
-                         MatchingEngine matchingEngine,
-                         DataCollector dataCollector,
-                         JobIntelligenceCacheRepository jobCacheRepository,
-                         CompanyIntelligenceCacheRepository companyCacheRepository,
+                         MatchService matchService,
+                         CandidateKnowledgeService candidateKnowledgeService,
                          ApplicationEventPublisher eventPublisher,
                          JobDiscoveryAgent jobDiscoveryAgent,
                          OpportunityPrioritizationService prioritizationService) {
         this.jobDiscoveryService = jobDiscoveryService;
-        this.matchingEngine = matchingEngine;
-        this.dataCollector = dataCollector;
-        this.jobCacheRepository = jobCacheRepository;
-        this.companyCacheRepository = companyCacheRepository;
+        this.matchService = matchService;
+        this.candidateKnowledgeService = candidateKnowledgeService;
         this.eventPublisher = eventPublisher;
         this.jobDiscoveryAgent = jobDiscoveryAgent;
         this.prioritizationService = prioritizationService;
@@ -110,40 +107,13 @@ public class MatchingAgent implements CareerAgent {
                         .filter(job -> matchesCriteria(job, criteria))
                         .toList();
 
-                Map<String, Object> candidateData = dataCollector.collectCandidateData(userId);
-                ResumeIntelligenceCache resumeCache = (ResumeIntelligenceCache) candidateData.get("resumeCache");
-                UserPreference preferences = (UserPreference) candidateData.get("preferences");
-
-                Map<String, Object> candidateKnowledge = resumeCache != null ? resumeCache.getStructuredKnowledge() : Map.of();
-                Map<String, Object> candidateQuality = resumeCache != null ? resumeCache.getQualityMetrics() : Map.of();
-                Map<String, Object> candidatePreferences = candidatePreferences(preferences, criteria);
-
+                if (candidateKnowledgeService.primaryResume(userId).isEmpty()) {
+                    return noResumeResult();
+                }
                 Map<String, Object> matchScores = new HashMap<>();
                 for (DiscoveryJob job : jobs) {
-                    Map<String, Object> jobKnowledge = new HashMap<>();
-                    jobKnowledge.put("title", job.getTitle());
-                    jobKnowledge.put("company", job.getCompany());
-                    jobKnowledge.put("locations", List.of(job.getLocation() != null ? job.getLocation() : ""));
-                    jobKnowledge.put("rawContent", job.getRawContent() != null ? job.getRawContent() : "");
-
-                    MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
-                            userId,
-                            job.getId(),
-                            null,
-                            userId,
-                            candidateKnowledge,
-                            candidateQuality,
-                            candidatePreferences,
-                            Map.of(),
-                            Map.of(),
-                            Map.of(),
-                            jobKnowledge,
-                            Map.of(),
-                            Map.of()
-                    );
-                    if (matchResult != null) {
-                        matchScores.put(job.getId().toString(), matchResult.getOverallScore());
-                    }
+                    MatchResultDto matchResult = matchService.match(userId, job.getId(), false);
+                    matchScores.put(job.getId().toString(), matchResult.getOverallScore());
                 }
 
                 Map<String, Object> output = new HashMap<>();
@@ -188,84 +158,32 @@ public class MatchingAgent implements CareerAgent {
                 AgentPolicy policy = context.getPolicy();
                 double minScore = policy != null ? policy.getMinimumMatchScore() : 70.0;
 
-                Map<String, Object> candidateData = dataCollector.collectCandidateData(userId);
-                ResumeIntelligenceCache resumeCache = (ResumeIntelligenceCache) candidateData.get("resumeCache");
-                UserPreference preferences = (UserPreference) candidateData.get("preferences");
-
-                if (resumeCache == null) {
-                    return AgentResult.builder()
-                            .status(AgentResult.Status.FAILED)
-                            .message("Candidate resume has not been analyzed yet. Please complete Resume Analysis first.")
-                            .build();
+                if (candidateKnowledgeService.primaryResume(userId).isEmpty()) {
+                    return noResumeResult();
                 }
-
-                Map<String, Object> candidateKnowledge = resumeCache.getStructuredKnowledge();
-                Map<String, Object> candidateQuality = resumeCache.getQualityMetrics();
-                Map<String, Object> candidatePreferences = candidatePreferences(
-                        preferences, jobDiscoveryAgent.deriveCriteriaForUser(userId));
 
                 List<DiscoveryJob> jobs = jobDiscoveryService.jobs();
                 List<Map<String, Object>> matchedJobsList = new ArrayList<>();
                 List<UUID> matchedJobIds = new ArrayList<>();
+                int notAnalysed = 0;
 
                 for (DiscoveryJob job : jobs) {
-                    String jobChecksum = job.getContentHash();
-                    if (jobChecksum == null || jobChecksum.isBlank()) {
-                        continue;
+                    // Each job is scored against ITS OWN data only; jobs without AI analysis are scored
+                    // on connector facts and flagged, never on another job's intelligence.
+                    MatchResultDto matchResult = matchService.match(userId, job.getId(), false);
+                    if (Boolean.FALSE.equals(matchResult.getJobAnalyzed())) {
+                        notAnalysed++;
                     }
-
-                    Optional<JobIntelligenceCache> jobCacheOpt = jobCacheRepository.findById(jobChecksum);
-                    if (jobCacheOpt.isEmpty()) {
-                        List<JobIntelligenceCache> caches = jobCacheRepository.findAll();
-                        if (!caches.isEmpty()) {
-                            jobCacheOpt = Optional.of(caches.get(0));
-                        }
-                    }
-                    if (jobCacheOpt.isEmpty()) {
-                        continue;
-                    }
-                    JobIntelligenceCache jobCache = jobCacheOpt.get();
-
-                    Map<String, Object> companyKnowledge = new HashMap<>();
-                    Map<String, Object> companyMeta = new HashMap<>();
-                    Map<String, Object> companyInsights = new HashMap<>();
-
-                    if (job.getCompany() != null) {
-                        String cleanName = job.getCompany().toLowerCase().replaceAll("[^a-z0-9]", "");
-                        String companyChecksum = cleanName + "_checksum";
-                        Optional<CompanyIntelligenceCache> companyCacheOpt = companyCacheRepository.findById(companyChecksum);
-                        if (companyCacheOpt.isPresent()) {
-                            companyKnowledge = companyCacheOpt.get().getStructuredKnowledge();
-                            companyMeta = companyCacheOpt.get().getMetadata();
-                            companyInsights = companyCacheOpt.get().getInsights();
-                        }
-                    }
-
-                    MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
-                            userId,
-                            job.getId(),
-                            null,
-                            userId,
-                            candidateKnowledge,
-                            candidateQuality,
-                            candidatePreferences,
-                            companyKnowledge,
-                            companyMeta,
-                            companyInsights,
-                            jobCache.getStructuredKnowledge(),
-                            jobCache.getMetadata(),
-                            jobCache.getInsights()
-                    );
-
                     double score = matchResult.getOverallScore();
                     if (score >= minScore) {
                         matchedJobIds.add(job.getId());
-
                         Map<String, Object> mJob = new HashMap<>();
                         mJob.put("jobId", job.getId().toString());
                         mJob.put("title", job.getTitle());
                         mJob.put("company", job.getCompany());
                         mJob.put("matchScore", score);
+                        mJob.put("jobAnalyzed", matchResult.getJobAnalyzed());
+                        mJob.put("notAssessedFactors", matchResult.getNotAssessedFactors());
                         matchedJobsList.add(mJob);
                     }
                 }
@@ -282,6 +200,7 @@ public class MatchingAgent implements CareerAgent {
                 outputData.put("matchedJobs", matchedJobsList);
                 outputData.put("matchedJobIds", matchedJobIds.stream().map(UUID::toString).collect(Collectors.toList()));
                 outputData.put("matchedCount", matchedJobIds.size());
+                outputData.put("jobsWithoutAnalysis", notAnalysed);
 
                 return AgentResult.builder()
                         .status(AgentResult.Status.SUCCESS)
@@ -345,5 +264,12 @@ public class MatchingAgent implements CareerAgent {
     @Override
     public AgentStatus getHealthStatus() {
         return AgentStatus.HEALTHY;
+    }
+
+    private static AgentResult noResumeResult() {
+        return AgentResult.builder()
+                .status(AgentResult.Status.FAILED)
+                .message("Candidate resume has not been analyzed yet. Upload a resume and wait for AI processing to finish.")
+                .build();
     }
 }

@@ -88,6 +88,7 @@ public class MatchingEngine {
 
         CandidateProfile candidateProfile = candidateProfileAnalyzer.analyze(
                 candidateKnowledge, candidateQualityMetrics, candidatePreferences);
+        candidateProfile.setCandidateId(candidateId);
         CompanyProfile companyProfile = companyProfileAnalyzer.analyze(
                 companyKnowledge, companyMetadata, companyInsights);
         JobProfile jobProfile = jobProfileAnalyzer.analyze(
@@ -134,6 +135,7 @@ public class MatchingEngine {
                 .explanation(explanation.detailedExplanation())
                 .matchedSkills(matchedSkills)
                 .missingSkills(missingSkills)
+                .notAssessedFactors(aggregationResult.notAssessedFactors())
                 .build();
 
         matchingCache.put(cacheKey, result);

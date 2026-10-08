@@ -22,11 +22,11 @@ public class EngineeringCultureMatchScorer implements MatchScorer {
         String candidateWorkStyle = candidate.getPreferredWorkStyle();
 
         if (companyCulture == null || companyCulture.isBlank()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (candidateWorkStyle == null || candidateWorkStyle.isBlank()) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         String normalizedCulture = normalizeToken(companyCulture);

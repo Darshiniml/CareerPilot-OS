@@ -40,7 +40,20 @@ public class LearningPath {
     @Column(name = "expected_match_improvement", nullable = false)
     private double expectedMatchImprovement;
 
-    @OneToMany(mappedBy = "learningPath", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Column(name = "why_it_matters", columnDefinition = "TEXT")
+    private String whyItMatters;
+
+    @Column(name = "practice_project", columnDefinition = "TEXT")
+    private String practiceProject;
+
+    /** Real evidence for prioritising this skill (e.g. "missing in 4 of 9 analysed matching jobs"). */
+    @Column(name = "demand_evidence", columnDefinition = "TEXT")
+    private String demandEvidence;
+
+    @Column(name = "ai_model", length = 100)
+    private String aiModel;
+
+    @OneToMany(mappedBy = "learningPath", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @Builder.Default
     private List<LearningPathItem> learningSequence = new ArrayList<>();
 

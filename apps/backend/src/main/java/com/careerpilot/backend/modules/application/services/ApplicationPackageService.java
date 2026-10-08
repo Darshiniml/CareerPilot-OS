@@ -1,6 +1,6 @@
 package com.careerpilot.backend.modules.application.services;
 
-import com.careerpilot.backend.modules.ai.matching.MatchingEngine;
+import com.careerpilot.backend.modules.ai.matching.MatchService;
 import com.careerpilot.backend.modules.application.domain.ApplicationDecision;
 import com.careerpilot.backend.modules.application.domain.ApplicationPackage;
 import com.careerpilot.backend.modules.application.domain.ApplicationRecord;
@@ -30,7 +30,7 @@ public class ApplicationPackageService {
     private final ApplicationDecisionService decisionService;
     private final UserRepository userRepository;
     private final DiscoveryJobRepository jobRepository;
-    private final MatchingEngine matchingEngine;
+    private final MatchService matchService;
     private final ApplicationSubmissionRegistry submissionRegistry;
     private final SubmissionPreflightService preflightService;
     private final ObjectMapper objectMapper;
@@ -41,7 +41,7 @@ public class ApplicationPackageService {
             ApplicationDecisionService decisionService,
             UserRepository userRepository,
             DiscoveryJobRepository jobRepository,
-            MatchingEngine matchingEngine,
+            MatchService matchService,
             ApplicationSubmissionRegistry submissionRegistry,
             SubmissionPreflightService preflightService,
             ObjectMapper objectMapper) {
@@ -50,7 +50,7 @@ public class ApplicationPackageService {
         this.decisionService = decisionService;
         this.userRepository = userRepository;
         this.jobRepository = jobRepository;
-        this.matchingEngine = matchingEngine;
+        this.matchService = matchService;
         this.submissionRegistry = submissionRegistry;
         this.preflightService = preflightService;
         this.objectMapper = objectMapper;
@@ -71,29 +71,8 @@ public class ApplicationPackageService {
         User user = userRepository.findById(candidateId).orElse(null);
         DiscoveryJob job = jobRepository.findById(jobId).orElse(null);
 
-        Map<String, Object> jobKnowledge = new HashMap<>();
-        if (job != null) {
-            jobKnowledge.put("title", job.getTitle());
-            jobKnowledge.put("company", job.getCompany());
-            jobKnowledge.put("locations", List.of(job.getLocation() != null ? job.getLocation() : ""));
-            jobKnowledge.put("rawContent", job.getRawContent() != null ? job.getRawContent() : "");
-        }
-
-        MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
-                candidateId,
-                jobId,
-                application.getCompanyId(),
-                candidateId,
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                jobKnowledge,
-                Map.of(),
-                Map.of()
-        );
+        // Real match only (candidate's processed resume); null when no resume has been processed.
+        MatchResultDto matchResult = matchService.matchIfPossible(candidateId, jobId).orElse(null);
 
         ApplicationSubmissionCapability capability = submissionRegistry.getSubmissionCapability(application.getConnectorId());
         SubmissionPreflightService.PreflightResult preflight = preflightService.evaluatePreflight(application, candidateId);
@@ -128,7 +107,9 @@ public class ApplicationPackageService {
         pkg.setSelectedResumeJson(toJson(selectedResume));
         pkg.setJobDetailsJson(toJson(jobDetails));
         pkg.setMatchResultJson(toJson(matchResult));
-        pkg.setCompanyIntelligenceJson(toJson(Map.of("company", job != null ? job.getCompany() : "Unknown")));
+        Map<String, Object> companyInfo = new HashMap<>();
+        companyInfo.put("company", job != null ? job.getCompany() : null);
+        pkg.setCompanyIntelligenceJson(toJson(companyInfo));
         pkg.setDecisionId(decision.getId());
         pkg.setSubmissionCapabilityJson(toJson(capability));
         pkg.setPreflightResultJson(toJson(preflight));

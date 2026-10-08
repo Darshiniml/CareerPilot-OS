@@ -1,5 +1,6 @@
 package com.careerpilot.backend.modules.ai.job.services;
 
+import com.careerpilot.backend.modules.ai.web.SafeWebPageFetcher;
 import com.careerpilot.backend.modules.ai.job.domain.JobIntelligenceCache;
 import com.careerpilot.backend.modules.ai.job.repositories.JobIntelligenceCacheRepository;
 import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
@@ -12,7 +13,6 @@ import com.careerpilot.shared.events.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -29,13 +29,16 @@ public class JobIntelligenceService {
     private final KnowledgePipelineService pipelineService;
     private final AiGatewayClient gatewayClient;
     private final ApplicationEventPublisher eventPublisher;
+    private final SafeWebPageFetcher webPageFetcher;
 
     public JobIntelligenceService(
             AiDocumentRepository documentRepository,
             JobIntelligenceCacheRepository cacheRepository,
             KnowledgePipelineService pipelineService,
             AiGatewayClient gatewayClient,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            SafeWebPageFetcher webPageFetcher) {
+        this.webPageFetcher = webPageFetcher;
         this.documentRepository = documentRepository;
         this.cacheRepository = cacheRepository;
         this.pipelineService = pipelineService;
@@ -43,12 +46,16 @@ public class JobIntelligenceService {
         this.eventPublisher = eventPublisher;
     }
 
-    @Transactional
+    // Not transactional: the model calls below can take minutes on a local CPU model, and a
+    // transaction would pin a pooled DB connection for that whole time. Each save commits on its own.
     public AiDocument processJob(UUID documentId, String content, String url) {
         AiDocument document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new IllegalArgumentException("Job document not found"));
 
-        String textContent = content != null ? content : (document.getContent() != null ? document.getContent() : "Sample job description");
+        String textContent = content != null ? content : document.getContent();
+        if (textContent == null || textContent.isBlank()) {
+            throw new IllegalArgumentException("Job description text is required");
+        }
         String checksum = calculateChecksum(textContent.getBytes(StandardCharsets.UTF_8));
         document.setChecksum(checksum);
         document.setSource(url);
@@ -56,10 +63,9 @@ public class JobIntelligenceService {
         UUID userId = document.getOwnerId();
 
         // 1. Duplicate Job Detection Check
-        Optional<AiDocument> duplicateOpt = documentRepository.findAll().stream()
-                .filter(d -> "JOB".equalsIgnoreCase(d.getDocumentType()) && !d.getId().equals(documentId))
-                .filter(d -> checksum.equals(d.getChecksum()))
-                .findFirst();
+        Optional<AiDocument> duplicateOpt = documentRepository
+                .findFirstByDocumentTypeAndChecksumAndIdNot("JOB", checksum, documentId)
+                .filter(d -> "READY".equals(d.getStatus()));
 
         if (duplicateOpt.isPresent()) {
             log.info("Duplicate job detected. Staging bypassed for document: {}", documentId);
@@ -98,7 +104,9 @@ public class JobIntelligenceService {
             // A. Execute JOB_PARSE to extract Canonical properties
             Map<String, Object> parsePayload = new HashMap<>();
             parsePayload.put("content", textContent);
-            parsePayload.put("url", url);
+            if (url != null) {
+                parsePayload.put("sourceUrl", url);
+            }
 
             AiTaskRequestDto parseRequest = AiTaskRequestDto.builder()
                     .taskId(UUID.randomUUID())
@@ -173,10 +181,15 @@ public class JobIntelligenceService {
         return processed;
     }
 
-    @Transactional
+    /** Fetch a real job posting page (SSRF-protected) and analyse its text. */
     public AiDocument processJobUrl(UUID ownerId, String url) {
-        String simulatedContent = acquireSimulatedJobContent(url);
-        String title = extractTitleFromUrl(url);
+        SafeWebPageFetcher.FetchedPage page = webPageFetcher.fetch(url);
+        if (page.text() == null || page.text().split("\\s+").length < 30) {
+            throw new IllegalArgumentException("The page does not contain enough readable text to analyse "
+                    + "(it may require JavaScript or a login). Paste the job description instead.");
+        }
+        String pageContent = page.text().length() > 24000 ? page.text().substring(0, 24000) : page.text();
+        String title = page.title() != null && !page.title().isBlank() ? page.title() : page.finalUrl();
 
         AiDocument document = AiDocument.builder()
                 .id(UUID.randomUUID())
@@ -185,7 +198,7 @@ public class JobIntelligenceService {
                 .ownerId(ownerId)
                 .title(title)
                 .source(url)
-                .content(simulatedContent)
+                .content(pageContent)
                 .version(1)
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -200,7 +213,7 @@ public class JobIntelligenceService {
                 .url(url)
                 .build());
 
-        return processJob(document.getId(), simulatedContent, url);
+        return processJob(document.getId(), pageContent, url);
     }
 
     private void publishEventChain(AiDocument doc) {
@@ -294,17 +307,4 @@ public class JobIntelligenceService {
         }
     }
 
-    private String acquireSimulatedJobContent(String url) {
-        return "Job Title: Senior Software Engineer (Java)\n" +
-            "Company: Google\n" +
-            "Location: Sunnyvale, California\n" +
-            "Responsibilities: Develop microservices. Design cloud-native deployment paths.\n" +
-            "Required Qualifications: BS in Computer Science. 5+ years of experience. Strong Java skills.\n" +
-            "Preferred Skills: React, Docker, Kubernetes, AWS.\n" +
-            "Salary: $150,000 - $200,000 Yearly.\n";
-    }
-
-    private String extractTitleFromUrl(String url) {
-        return "Senior Software Engineer (Java)";
-    }
 }

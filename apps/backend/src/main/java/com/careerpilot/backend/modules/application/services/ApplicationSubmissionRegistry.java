@@ -16,7 +16,7 @@ public class ApplicationSubmissionRegistry {
     private final ManualApplicationSubmissionConnector manualFallback;
 
     private static final List<String> KNOWN_SOURCES = List.of(
-            "greenhouse", "lever", "ashby", "company-career",
+            "greenhouse", "lever", "ashby",
             "remotive", "weworkremotely", "adzuna", "jooble", "wellfound", "indeed"
     );
 
@@ -57,8 +57,9 @@ public class ApplicationSubmissionRegistry {
                     .supportsVerification(false)
                     .supportsStatusTracking(false)
                     .reason(connector.isSubmissionSupported() ? "Permitted submission API active" : "Discovery source does not expose a permitted application submission API")
-                    .configurationStatus("CONFIGURED")
-                    .healthStatus("HEALTHY")
+                    .configurationStatus("REGISTERED")
+                    // Submission endpoints are not probed, so health is not claimed.
+                    .healthStatus("NOT_MONITORED")
                     .build();
         }
 
@@ -72,8 +73,9 @@ public class ApplicationSubmissionRegistry {
                 .supportsVerification(false)
                 .supportsStatusTracking(false)
                 .reason("Aggregator provides job discovery; requires candidate manual action via official applyUrl")
-                .configurationStatus(KNOWN_SOURCES.contains(key) ? "CONFIGURED" : "NOT_CONFIGURED")
-                .healthStatus(KNOWN_SOURCES.contains(key) ? "HEALTHY" : "NOT_CONFIGURED")
+                // Manual applications need no submission configuration; nothing is monitored.
+                .configurationStatus(KNOWN_SOURCES.contains(key) ? "NOT_REQUIRED" : "NOT_CONFIGURED")
+                .healthStatus("NOT_APPLICABLE")
                 .build();
     }
 

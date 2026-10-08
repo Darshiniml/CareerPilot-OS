@@ -22,11 +22,11 @@ public class EmploymentTypeMatchScorer implements MatchScorer {
         String candidateEmploymentType = candidate.getPreferredEmploymentType();
 
         if (jobEmploymentType == null || jobEmploymentType.isBlank()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (candidateEmploymentType == null || candidateEmploymentType.isBlank()) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         String normalizedJob = normalizeToken(jobEmploymentType);

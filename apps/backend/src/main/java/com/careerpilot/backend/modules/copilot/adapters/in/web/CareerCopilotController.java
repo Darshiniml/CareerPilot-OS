@@ -1,78 +1,57 @@
 package com.careerpilot.backend.modules.copilot.adapters.in.web;
 
-import com.careerpilot.backend.modules.copilot.domain.CopilotContext;
-import com.careerpilot.backend.modules.copilot.domain.CopilotPlan;
-import com.careerpilot.backend.modules.copilot.domain.CopilotRecommendation;
-import com.careerpilot.backend.modules.copilot.services.CareerCopilotEngine;
-import com.careerpilot.backend.modules.copilot.services.ConversationMemory;
-import com.careerpilot.backend.modules.copilot.services.CareerHealthScoreService;
+import com.careerpilot.backend.config.CurrentUser;
+import com.careerpilot.backend.modules.copilot.services.CareerHealthService;
+import com.careerpilot.backend.modules.copilot.services.CopilotService;
+import com.careerpilot.backend.modules.copilot.services.CopilotTools;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
+/** Career Copilot. Identity always comes from the authenticated principal; memory is per user. */
 @RestController
 @RequestMapping("/api/v1/copilot")
+@Tag(name = "Career Copilot", description = "AI agent that answers from your real CareerPilot data using read-only tools")
+@RequiredArgsConstructor
 public class CareerCopilotController {
-    private final CareerCopilotEngine engine;
-    private final ConversationMemory memory;
 
-    public CareerCopilotController(CareerCopilotEngine engine, ConversationMemory memory) {
-        this.engine = engine;
-        this.memory = memory;
-    }
+    private final CopilotService copilotService;
+    private final CareerHealthService careerHealthService;
+    private final CurrentUser currentUser;
 
     @PostMapping("/chat")
-    public ResponseEntity<CopilotContext> chat(@RequestBody ChatRequest request) {
-        return ResponseEntity.ok(engine.process(request.message(), request.userId()));
-    }
-
-    @PostMapping("/plan")
-    public ResponseEntity<CopilotPlan> plan(@RequestBody PlanRequest request) {
-        CopilotContext context = engine.process(request.message(), request.userId());
-        return ResponseEntity.ok(engine.createPlan(context));
-    }
-
-    @PostMapping("/recommendations")
-    public ResponseEntity<List<CopilotRecommendation>> recommendations(@RequestBody ChatRequest request) {
-        CopilotContext context = engine.process(request.message(), request.userId());
-        return ResponseEntity.ok(engine.recommend(context));
-    }
-
-    @PostMapping("/explain-match")
-    public ResponseEntity<String> explainMatch(@RequestBody ExplainRequest request) {
-        CopilotRecommendation recommendation = new CopilotRecommendation();
-        recommendation.setTitle("Learn AWS");
-        recommendation.setReason("72% of your top matching backend jobs require AWS.");
-        recommendation.setEvidence(List.of("18 matching jobs require AWS", "Current resume does not include AWS"));
-        return ResponseEntity.ok(engine.explain(recommendation));
-    }
-
-    @GetMapping("/dashboard")
-    public ResponseEntity<Map<String, Object>> dashboard(@RequestParam(required = false) String userId) {
-        CopilotContext context = engine.process("dashboard summary", userId == null ? "demo" : userId);
-        return ResponseEntity.ok(engine.dashboard(context));
-    }
-
-    @GetMapping("/health-score")
-    public ResponseEntity<CareerHealthScoreService.ScoreResult> healthScore(@RequestParam(required = false) String userId) {
-        CopilotContext context = engine.process("health score", userId == null ? "demo" : userId);
-        return ResponseEntity.ok(engine.healthScore(context));
+    @Operation(summary = "Ask the Copilot a question")
+    public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, String> body, Principal principal) {
+        String message = body.getOrDefault("message", body.get("query"));
+        return ResponseEntity.ok(copilotService.chat(currentUser.requireId(principal), message));
     }
 
     @GetMapping("/history")
-    public ResponseEntity<List<?>> history() {
-        return ResponseEntity.ok(memory.getHistory());
+    public ResponseEntity<List<Map<String, Object>>> history(@RequestParam(defaultValue = "50") int limit, Principal principal) {
+        return ResponseEntity.ok(copilotService.history(currentUser.requireId(principal), limit));
     }
 
     @PostMapping("/clear-session")
-    public ResponseEntity<Void> clearSession() {
-        memory.clear();
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Map<String, Object>> clear(Principal principal) {
+        long deleted = copilotService.clear(currentUser.requireId(principal));
+        return ResponseEntity.ok(Map.of("deletedMessages", deleted));
     }
 
-    public record ChatRequest(String message, String userId) {}
-    public record PlanRequest(String message, String userId) {}
-    public record ExplainRequest(String message) {}
+    @GetMapping("/tools")
+    @Operation(summary = "The read-only tools the Copilot can use")
+    public ResponseEntity<List<CopilotTools.ToolSpec>> tools() {
+        return ResponseEntity.ok(copilotService.catalog());
+    }
+
+    @GetMapping("/health-score")
+    @Operation(summary = "Career health computed from your real data (unavailable components are reported, not guessed)")
+    public ResponseEntity<Map<String, Object>> health(Principal principal) {
+        return ResponseEntity.ok(careerHealthService.health(currentUser.requireId(principal)));
+    }
 }

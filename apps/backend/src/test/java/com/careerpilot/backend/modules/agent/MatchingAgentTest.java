@@ -18,19 +18,17 @@ public class MatchingAgentTest {
     @Test
     public void testMatchingAgentMissingResumeCache() {
         JobDiscoveryService jobDiscoveryService = mock(JobDiscoveryService.class);
-        MatchingEngine matchingEngine = mock(MatchingEngine.class);
-        DataCollector dataCollector = mock(DataCollector.class);
-        JobIntelligenceCacheRepository jobCacheRepository = mock(JobIntelligenceCacheRepository.class);
-        CompanyIntelligenceCacheRepository companyCacheRepository = mock(CompanyIntelligenceCacheRepository.class);
+        com.careerpilot.backend.modules.ai.matching.MatchService matchService = mock(com.careerpilot.backend.modules.ai.matching.MatchService.class);
+        com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService candidateKnowledgeService = mock(com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
         com.careerpilot.backend.modules.agent.services.JobDiscoveryAgent jobDiscoveryAgent = mock(com.careerpilot.backend.modules.agent.services.JobDiscoveryAgent.class);
         com.careerpilot.backend.modules.opportunity.services.OpportunityPrioritizationService prioritizationService = mock(com.careerpilot.backend.modules.opportunity.services.OpportunityPrioritizationService.class);
 
         MatchingAgent agent = new MatchingAgent(
-                jobDiscoveryService, matchingEngine, dataCollector, jobCacheRepository, companyCacheRepository, eventPublisher, jobDiscoveryAgent, prioritizationService);
+                jobDiscoveryService, matchService, candidateKnowledgeService, eventPublisher, jobDiscoveryAgent, prioritizationService);
 
         UUID userId = UUID.randomUUID();
-        when(dataCollector.collectCandidateData(userId)).thenReturn(new HashMap<>()); // Returns empty candidateData
+        when(candidateKnowledgeService.primaryResume(userId)).thenReturn(java.util.Optional.empty()); // no processed resume
 
         AgentContext context = AgentContext.builder()
                 .userId(userId)
@@ -41,5 +39,6 @@ public class MatchingAgentTest {
         AgentResult result = agent.execute(context, task);
         assertEquals(AgentResult.Status.FAILED, result.getStatus());
         assertTrue(result.getMessage().contains("Candidate resume has not been analyzed"));
+        verifyNoInteractions(matchService); // nothing is scored against empty candidate data
     }
 }

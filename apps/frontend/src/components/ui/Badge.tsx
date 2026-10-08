@@ -1,25 +1,50 @@
 import React from 'react';
+import { cn } from '../../lib/format';
 
-interface BadgeProps {
-  children: React.ReactNode;
-  variant?: 'neutral' | 'active' | 'success' | 'warning' | 'danger';
-}
+export type Tone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 
-export const Badge: React.FC<BadgeProps> = ({
+const tones: Record<Tone, string> = {
+  neutral: 'bg-surface-2 text-fg-muted border-border',
+  primary: 'bg-primary-soft text-primary-soft-fg border-primary/25',
+  success: 'bg-success-soft text-success border-success/25',
+  warning: 'bg-warning-soft text-warning border-warning/30',
+  danger: 'bg-danger-soft text-danger border-danger/25',
+  info: 'bg-info-soft text-info border-info/25',
+};
+
+export function Badge({
+  tone = 'neutral',
+  className,
   children,
-  variant = 'neutral',
-}) => {
-  const styles = {
-    neutral: 'bg-slate-800/80 text-slate-300 border border-slate-700/60',
-    active: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm shadow-indigo-500/20',
-    success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/20',
-    warning: 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/20',
-    danger: 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/20',
-  };
-
+  icon,
+  title,
+}: {
+  tone?: Tone;
+  className?: string;
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+  title?: string;
+}) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold select-none backdrop-blur-sm ${styles[variant]}`}>
-      {children}
+    <span
+      title={title}
+      className={cn(
+        'inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4',
+        tones[tone],
+        className,
+      )}
+    >
+      {icon}
+      <span className="truncate">{children}</span>
     </span>
   );
-};
+}
+
+/** Small "AI-generated" label used on every piece of model output. */
+export function AiLabel({ children = 'AI-generated' }: { children?: React.ReactNode }) {
+  return (
+    <Badge tone="primary" className="uppercase tracking-wide">
+      {children}
+    </Badge>
+  );
+}

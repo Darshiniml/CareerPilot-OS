@@ -1,44 +1,54 @@
 package com.careerpilot.backend.config;
 
 import com.careerpilot.backend.modules.auth.domain.Role;
-import com.careerpilot.backend.modules.auth.domain.RoleRepository;
 import com.careerpilot.backend.modules.auth.domain.User;
+import com.careerpilot.backend.modules.auth.domain.RoleRepository;
 import com.careerpilot.backend.modules.auth.domain.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Seeds a default test user on every startup if not already present.
- * This prevents the "Invalid email or password" error after backend restarts.
+ * Startup seeding.
+ *
+ * <ul>
+ *   <li>Always ensures the {@code ROLE_USER} role exists (required for registration).</li>
+ *   <li>Optionally creates a demo account, only when {@code careerpilot.demo.enabled=true} and a
+ *       password is supplied via {@code CAREERPILOT_DEMO_PASSWORD}. The demo account is created once
+ *       and its password is never reset afterwards, so seeding cannot act as a backdoor.</li>
+ * </ul>
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements ApplicationRunner {
 
+    private static final String ROLE_USER = "ROLE_USER";
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
-    private static final String TEST_EMAIL    = "darshini.test@careerpilot.com";
-    private static final String TEST_PASSWORD = "Test@12345";
-    private static final String TEST_FIRST    = "Darshini";
-    private static final String TEST_LAST     = "Test";
-    private static final String ROLE_USER     = "ROLE_USER";
+    @Value("${careerpilot.demo.enabled:false}")
+    private boolean demoEnabled;
+
+    @Value("${careerpilot.demo.email:demo@careerpilot.local}")
+    private String demoEmail;
+
+    @Value("${careerpilot.demo.password:}")
+    private String demoPassword;
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        // Ensure ROLE_USER exists
         Role userRole = roleRepository.findByName(ROLE_USER)
                 .orElseGet(() -> {
                     Role r = new Role();
@@ -47,24 +57,25 @@ public class DataSeeder implements ApplicationRunner {
                     return roleRepository.save(r);
                 });
 
-        // Create test user if missing
-        Optional<User> existingOpt = userRepository.findByEmail(TEST_EMAIL);
-        if (existingOpt.isEmpty()) {
-            User user = User.builder()
-                    .id(UUID.fromString("1b2ec552-9991-4186-b6a0-53b70dcca0f7"))
-                    .email(TEST_EMAIL)
-                    .passwordHash(passwordEncoder.encode(TEST_PASSWORD))
-                    .firstName(TEST_FIRST)
-                    .lastName(TEST_LAST)
-                    .roles(Set.of(userRole))
-                    .build();
-            userRepository.save(user);
-            log.info("DataSeeder: Created test user → {}", TEST_EMAIL);
-        } else {
-            User user = existingOpt.get();
-            user.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
-            userRepository.save(user);
-            log.info("DataSeeder: Updated test user password → {}", TEST_EMAIL);
+        if (!demoEnabled) {
+            return;
         }
+        if (demoPassword == null || demoPassword.length() < 10) {
+            log.warn("DataSeeder: demo account requested but CAREERPILOT_DEMO_PASSWORD is missing or shorter than 10 characters; skipping");
+            return;
+        }
+        if (userRepository.findByEmail(demoEmail).isPresent()) {
+            return; // never modify an existing account
+        }
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .email(demoEmail)
+                .passwordHash(passwordEncoder.encode(demoPassword))
+                .firstName("Demo")
+                .lastName("User")
+                .roles(Set.of(userRole))
+                .build();
+        userRepository.save(user);
+        log.info("DataSeeder: created demo account {}", demoEmail);
     }
 }

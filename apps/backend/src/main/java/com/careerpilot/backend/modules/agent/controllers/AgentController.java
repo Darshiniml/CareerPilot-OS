@@ -143,8 +143,8 @@ public class AgentController {
     @GetMapping("/active")
     @Operation(summary = "Get currently active agent counts and details")
     public ResponseEntity<Map<String, Object>> getActiveAgents(Principal principal) {
-        // Exposes exact active execution tracking
-        return ResponseEntity.ok(orchestrator.getActiveExecutions());
+        // Only the caller's own running executions.
+        return ResponseEntity.ok(orchestrator.getActiveExecutions(getUserId(principal)));
     }
 
     @GetMapping("/policy")

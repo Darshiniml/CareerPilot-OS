@@ -16,7 +16,7 @@ public class WellfoundJobConnector implements Connector {
     @Value("${wellfound.api.key:}")
     private String apiKey;
 
-    private boolean enabled = true;
+    private boolean enabled = false; // unsupported source
 
     @Override
     public String getConnectorId() {
@@ -50,25 +50,11 @@ public class WellfoundJobConnector implements Connector {
 
     @Override
     public ConnectorHealth healthCheck() {
-        if (!enabled) {
-            return ConnectorHealth.builder()
-                    .connectorId(getConnectorId())
-                    .status(ConnectorHealthStatus.DISABLED)
-                    .message("Connector disabled")
-                    .build();
-        }
-        if (apiKey == null || apiKey.isBlank()) {
-            return ConnectorHealth.builder()
-                    .connectorId(getConnectorId())
-                    .status(ConnectorHealthStatus.UNHEALTHY)
-                    .message("NOT_CONFIGURED: WELLFOUND_API_KEY environment variable required")
-                    .build();
-        }
+        // There is no official public job-search API for this source; it is kept registered but unsupported.
         return ConnectorHealth.builder()
                 .connectorId(getConnectorId())
-                .status(ConnectorHealthStatus.HEALTHY)
-                .lastSuccess(Instant.now())
-                .message("Wellfound API configured")
+                .status(ConnectorHealthStatus.DISABLED)
+                .message("UNSUPPORTED: no official public job-search API is available for this source")
                 .build();
     }
 

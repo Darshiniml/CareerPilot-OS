@@ -110,7 +110,7 @@ public class ReferenceResearchAgent implements CareerAgent {
             
             return AgentResult.builder()
                     .status(AgentResult.Status.SUCCESS)
-                    .message("Public hiring signals verified successfully.")
+                    .message("Hiring signals collected from discovered job postings.")
                     .outputData(allSignals)
                     .build();
             

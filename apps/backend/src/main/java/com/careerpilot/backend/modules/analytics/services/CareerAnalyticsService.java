@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class CareerAnalyticsService {
+    private final com.careerpilot.backend.modules.analytics.repositories.LearningPathRepository learningPathRepository;
 
     private final DataCollector dataCollector;
     private final MetricCalculator metricCalculator;
@@ -28,9 +29,7 @@ public class CareerAnalyticsService {
     private final CareerProgressAnalyzer careerProgressAnalyzer;
     private final ApplicationAnalyzer applicationAnalyzer;
     private final InterviewAnalyzer interviewAnalyzer;
-    private final LearningPathEngine learningPathEngine;
     private final CareerInsights careerInsights;
-    private final CareerPredictionEngine predictionEngine;
 
     private final CareerAnalyticsRepository analyticsRepository;
     private final SkillGapRepository skillGapRepository;
@@ -267,21 +266,15 @@ public class CareerAnalyticsService {
 
         LearningProgress saved = learningProgressRepository.save(progress);
 
-        // Find associated learning path if any
-        List<LearningPath> paths = learningPathEngine.generateLearningPath(candidateId, skill, "BEGINNER", "STRONG").getLearningSequence().stream()
-                .map(LearningPathItem::getLearningPath)
-                .distinct()
-                .toList();
-
-        if (!paths.isEmpty()) {
-            eventPublisher.publishEvent(LearningProgressUpdatedEvent.builder()
-                    .eventId(UUID.randomUUID())
-                    .timestamp(Instant.now())
-                    .candidateId(candidateId)
-                    .learningPathId(paths.get(0).getId())
-                    .progressPercentage(progressPercent)
-                    .build());
-        }
+        // Notify listeners when the skill belongs to an existing learning path.
+        learningPathRepository.findByCandidateIdAndSkill(candidateId, skill).ifPresent(path ->
+                eventPublisher.publishEvent(LearningProgressUpdatedEvent.builder()
+                        .eventId(UUID.randomUUID())
+                        .timestamp(Instant.now())
+                        .candidateId(candidateId)
+                        .learningPathId(path.getId())
+                        .progressPercentage(progressPercent)
+                        .build()));
 
         return saved;
     }

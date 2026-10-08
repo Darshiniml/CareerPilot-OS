@@ -32,6 +32,7 @@ public class ApplicationAgent implements CareerAgent {
     private final ApplicationOrchestratorService applicationOrchestratorService;
     private final ApplicationEventPublisher eventPublisher;
     private final SubmissionPreflightService preflightService;
+    private final com.careerpilot.backend.modules.ai.matching.MatchService matchService;
 
     public ApplicationAgent(JobDiscoveryService jobDiscoveryService,
                              ConnectorRegistry connectorRegistry,
@@ -39,7 +40,8 @@ public class ApplicationAgent implements CareerAgent {
                              ResumeVersionRepository resumeVersionRepository,
                              ApplicationOrchestratorService applicationOrchestratorService,
                              ApplicationEventPublisher eventPublisher,
-                             SubmissionPreflightService preflightService) {
+                             SubmissionPreflightService preflightService,
+                            com.careerpilot.backend.modules.ai.matching.MatchService matchService) {
         this.jobDiscoveryService = jobDiscoveryService;
         this.connectorRegistry = connectorRegistry;
         this.resumeRepository = resumeRepository;
@@ -47,6 +49,7 @@ public class ApplicationAgent implements CareerAgent {
         this.applicationOrchestratorService = applicationOrchestratorService;
         this.eventPublisher = eventPublisher;
         this.preflightService = preflightService;
+        this.matchService = matchService;
     }
 
     @Override
@@ -145,16 +148,28 @@ public class ApplicationAgent implements CareerAgent {
                 }
                 ResumeVersion version = versions.get(0);
 
-                List<DiscoveryJob> jobs = jobDiscoveryService.jobs();
+                // Only jobs that genuinely match the candidate's processed resume, best first, within the
+                // policy's daily limit. Nothing is created for unscored jobs.
+                double minScore = policy != null && policy.getMinimumMatchScore() != null ? policy.getMinimumMatchScore() : 70.0;
+                int maxNew = policy != null && policy.getMaxApplicationsPerDay() != null ? policy.getMaxApplicationsPerDay() : 5;
+                List<DiscoveryJob> jobs = jobDiscoveryService.jobs().stream()
+                        .map(j -> Map.entry(j, matchService.matchIfPossible(userId, j.getId())))
+                        .filter(e -> e.getValue().isPresent() && e.getValue().get().getOverallScore() >= minScore)
+                        .sorted((a, b) -> Double.compare(b.getValue().get().getOverallScore(), a.getValue().get().getOverallScore()))
+                        .limit(maxNew)
+                        .map(Map.Entry::getKey)
+                        .toList();
                 List<Map<String, Object>> preparedApps = new ArrayList<>();
 
                 for (DiscoveryJob job : jobs) {
-                    String connectorId = job.getConnectorId() != null ? job.getConnectorId() : "local-jobs";
-
+                    String connectorId = job.getConnectorId();
+                    if (connectorId == null) {
+                        continue; // no provenance: never invent a source
+                    }
                     try {
                         connectorRegistry.get(connectorId);
                     } catch (Exception e) {
-                        log.warn("[APPLICATION-AGENT] Connector {} not active for job {}, continuing with fallback.", connectorId, job.getId());
+                        log.warn("[APPLICATION-AGENT] Connector {} not active for job {}; application will require manual action.", connectorId, job.getId());
                         connectorId = "manual-fallback";
                     }
 
@@ -166,7 +181,7 @@ public class ApplicationAgent implements CareerAgent {
                     try {
                         appRecord = applicationOrchestratorService.createApplication(
                                 userId,
-                                UUID.randomUUID(),
+                                null, // company records are not created from postings; never a random id
                                 job.getId(),
                                 connectorId,
                                 metadata

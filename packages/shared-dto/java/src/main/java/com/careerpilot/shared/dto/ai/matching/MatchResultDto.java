@@ -14,6 +14,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MatchResultDto {
+    /** Factors excluded from the score because the needed data was missing. */
+    private List<String> notAssessedFactors;
+    /** False when the job has not been AI-analysed yet (requirement-based factors are then not assessed). */
+    private Boolean jobAnalyzed;
     private UUID matchId;
     private UUID candidateId;
     private UUID jobId;

@@ -18,13 +18,13 @@ public class ResumeAgentTest {
     @Test
     public void testResumeAgentExecutionNoResume() {
         ResumeRepository resumeRepository = mock(ResumeRepository.class);
-        AiDocumentRepository documentRepository = mock(AiDocumentRepository.class);
-        ResumeIntelligenceService resumeIntelligenceService = mock(ResumeIntelligenceService.class);
-        ResumeIntelligenceCacheRepository resumeCacheRepository = mock(ResumeIntelligenceCacheRepository.class);
+        com.careerpilot.backend.modules.resume.services.ResumeProcessingService processingService =
+                mock(com.careerpilot.backend.modules.resume.services.ResumeProcessingService.class);
+        com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService knowledgeService =
+                mock(com.careerpilot.backend.modules.ai.candidate.CandidateKnowledgeService.class);
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
-        ResumeAgent agent = new ResumeAgent(
-                resumeRepository, documentRepository, resumeIntelligenceService, resumeCacheRepository, eventPublisher);
+        ResumeAgent agent = new ResumeAgent(resumeRepository, processingService, knowledgeService, eventPublisher);
 
         UUID userId = UUID.randomUUID();
         when(resumeRepository.findDefaultByUserId(userId)).thenReturn(Optional.empty());
@@ -36,5 +36,6 @@ public class ResumeAgentTest {
         AgentResult result = agent.execute(context, task);
         assertEquals(AgentResult.Status.BLOCKED, result.getStatus());
         assertTrue(result.getMessage().contains("Resume required"));
+        verifyNoInteractions(processingService); // never analyses placeholder text
     }
 }

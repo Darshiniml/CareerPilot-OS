@@ -1,145 +1,82 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
-import { Login } from '../features/auth/Login';
-import { Register } from '../features/auth/Register';
-import { Dashboard } from '../features/dashboard/Dashboard';
-import { Profile } from '../features/profile/Profile';
-import { Resumes } from '../features/resumes/Resumes';
-import { Jobs } from '../features/jobs/Jobs';
-import { Matching } from '../features/matching/Matching';
-import { Applications } from '../features/applications/Applications';
-import { OpportunityWorkspace } from '../features/opportunities/OpportunityWorkspace';
-import { Interviews } from '../features/interviews/Interviews';
-import { Learning } from '../features/learning/Learning';
-import { Copilot } from '../features/copilot/Copilot';
-import { Analytics } from '../features/analytics/Analytics';
-import { Settings } from '../features/settings/Settings';
-import { Agents } from '../features/agents/Agents';
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useIsAuthenticated } from '../store/auth';
+import { AppShell } from '../components/layout/AppShell';
+import { Spinner } from '../components/ui/Feedback';
+import { LoginPage, RegisterPage } from '../features/auth/AuthPages';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
-};
+const page = <K extends string>(loader: () => Promise<Record<K, ComponentType>>, name: K) =>
+  lazy(() => loader().then((m) => ({ default: m[name] })));
 
-const RootRedirect: React.FC = () => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />;
-};
+const DashboardPage = page(() => import('../features/dashboard/DashboardPage'), 'DashboardPage');
+const ProfilePage = page(() => import('../features/profile/ProfilePage'), 'ProfilePage');
+const ResumesPage = page(() => import('../features/resumes/ResumesPage'), 'ResumesPage');
+const JobsPage = page(() => import('../features/jobs/JobsPage'), 'JobsPage');
+const OpportunitiesPage = page(() => import('../features/opportunities/OpportunitiesPage'), 'OpportunitiesPage');
+const ApplicationsPage = page(() => import('../features/applications/ApplicationsPage'), 'ApplicationsPage');
+const InboxPage = page(() => import('../features/inbox/InboxPage'), 'InboxPage');
+const FollowUpsPage = page(() => import('../features/followups/FollowUpsPage'), 'FollowUpsPage');
+const InterviewsPage = page(() => import('../features/interviews/InterviewsPage'), 'InterviewsPage');
+const CoverLettersPage = page(() => import('../features/coverletters/CoverLettersPage'), 'CoverLettersPage');
+const LearningPage = page(() => import('../features/learning/LearningPage'), 'LearningPage');
+const AnalyticsPage = page(() => import('../features/analytics/AnalyticsPage'), 'AnalyticsPage');
+const CopilotPage = page(() => import('../features/copilot/CopilotPage'), 'CopilotPage');
+const AgentsPage = page(() => import('../features/agents/AgentsPage'), 'AgentsPage');
+const SettingsPage = page(() => import('../features/settings/SettingsPage'), 'SettingsPage');
 
-export const AppRoutes: React.FC = () => {
+function RequireAuth({ children }: { children: ReactNode }) {
+  const authed = useIsAuthenticated();
+  const location = useLocation();
+  if (!authed) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  return <>{children}</>;
+}
+
+function GuestOnly({ children }: { children: ReactNode }) {
+  const authed = useIsAuthenticated();
+  return authed ? <Navigate to="/dashboard" replace /> : <>{children}</>;
+}
+
+const fallback = (
+  <div className="flex min-h-[40vh] items-center justify-center">
+    <Spinner label="Loading…" />
+  </div>
+);
+
+export function AppRoutes() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<RootRedirect />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/resumes"
-          element={
-            <ProtectedRoute>
-              <Resumes />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/jobs"
-          element={
-            <ProtectedRoute>
-              <Jobs />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/opportunities"
-          element={
-            <ProtectedRoute>
-              <OpportunityWorkspace />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/matching"
-          element={
-            <ProtectedRoute>
-              <Matching />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/applications"
-          element={
-            <ProtectedRoute>
-              <Applications />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/interviews"
-          element={
-            <ProtectedRoute>
-              <Interviews />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/learning"
-          element={
-            <ProtectedRoute>
-              <Learning />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/copilot"
-          element={
-            <ProtectedRoute>
-              <Copilot />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/agents"
-          element={
-            <ProtectedRoute>
-              <Agents />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/analytics"
-          element={
-            <ProtectedRoute>
-              <Analytics />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={fallback}>
+        <Routes>
+          <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
+          <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+          <Route
+            element={
+              <RequireAuth>
+                <AppShell />
+              </RequireAuth>
+            }
+          >
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/resumes" element={<ResumesPage />} />
+            <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/opportunities" element={<OpportunitiesPage />} />
+            <Route path="/applications" element={<ApplicationsPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/follow-ups" element={<FollowUpsPage />} />
+            <Route path="/interviews" element={<InterviewsPage />} />
+            <Route path="/cover-letters" element={<CoverLettersPage />} />
+            <Route path="/learning" element={<LearningPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/copilot" element={<CopilotPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/matching" element={<Navigate to="/jobs" replace />} />
+          </Route>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
-};
+}

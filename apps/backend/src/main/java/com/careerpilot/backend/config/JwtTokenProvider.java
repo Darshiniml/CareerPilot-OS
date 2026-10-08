@@ -23,6 +23,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class JwtTokenProvider {
 
+    /** Distinguishes short-lived access tokens from refresh tokens; each is only accepted in its own role. */
+    static final String TOKEN_TYPE_CLAIM = "token_type";
+    static final String ACCESS = "access";
+    static final String REFRESH = "refresh";
+
     private final SecretKey secretKey;
     private final long accessTokenExpirationMs;
     private final long refreshTokenExpirationMs;
@@ -42,11 +47,14 @@ public class JwtTokenProvider {
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toList());
         claims.put("roles", roles);
+        claims.put(TOKEN_TYPE_CLAIM, ACCESS);
         return createToken(claims, userDetails.getUsername(), accessTokenExpirationMs);
     }
 
     public String generateRefreshToken(UserDetails userDetails) {
-        return createToken(new HashMap<>(), userDetails.getUsername(), refreshTokenExpirationMs);
+        Map<String, Object> claims = new HashMap<>();
+        claims.put(TOKEN_TYPE_CLAIM, REFRESH);
+        return createToken(claims, userDetails.getUsername(), refreshTokenExpirationMs);
     }
 
     private String createToken(Map<String, Object> claims, String subject, long expirationMs) {
@@ -84,12 +92,26 @@ public class JwtTokenProvider {
         return extractExpiration(token).before(new Date());
     }
 
+    /** Validates an ACCESS token for {@code userDetails}; refresh tokens are rejected here. */
     public boolean validateToken(String token, UserDetails userDetails) {
         try {
-            final String username = extractUsername(token);
-            return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+            final Claims claims = extractAllClaims(token);
+            return claims.getSubject().equals(userDetails.getUsername())
+                    && claims.getExpiration().after(new Date())
+                    && ACCESS.equals(claims.get(TOKEN_TYPE_CLAIM, String.class));
         } catch (JwtException | IllegalArgumentException e) {
-            log.error("JWT validation failed: {}", e.getMessage());
+            log.warn("JWT validation failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** True only for a correctly signed, unexpired REFRESH token. */
+    public boolean isValidRefreshToken(String token) {
+        try {
+            final Claims claims = extractAllClaims(token);
+            return claims.getExpiration().after(new Date())
+                    && REFRESH.equals(claims.get(TOKEN_TYPE_CLAIM, String.class));
+        } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }

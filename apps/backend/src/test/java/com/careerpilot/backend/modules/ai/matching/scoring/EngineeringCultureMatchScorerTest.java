@@ -71,7 +71,7 @@ class EngineeringCultureMatchScorerTest {
                 .build();
 
         double score = scorer.score(candidate, company, JobProfile.builder().build());
-        assertEquals(100.0, score, 0.01);
+        assertTrue(Double.isNaN(score), "missing company culture is not assessable, not a perfect score");
     }
 
     @Test
@@ -85,7 +85,7 @@ class EngineeringCultureMatchScorerTest {
                 .build();
 
         double score = scorer.score(candidate, company, JobProfile.builder().build());
-        assertEquals(50.0, score, 0.01);
+        assertTrue(Double.isNaN(score), "missing candidate preference is not assessable");
     }
 
     @Test

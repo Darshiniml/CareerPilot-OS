@@ -24,7 +24,7 @@ public class CertificationMatchScorer implements MatchScorer {
         Set<String> requiredCerts = job.getRequiredCertifications();
 
         if (requiredCerts == null || requiredCerts.isEmpty()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (candidateCerts == null || candidateCerts.isEmpty()) {

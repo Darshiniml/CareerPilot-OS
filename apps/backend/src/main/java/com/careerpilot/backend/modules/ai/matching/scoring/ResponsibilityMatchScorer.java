@@ -24,11 +24,11 @@ public class ResponsibilityMatchScorer implements MatchScorer {
         String candidateSummary = candidate.getSummary();
 
         if (responsibilities == null || responsibilities.isEmpty()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (candidateSummary == null || candidateSummary.isBlank()) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         double matchScore = 0.0;
@@ -58,7 +58,7 @@ public class ResponsibilityMatchScorer implements MatchScorer {
             }
         }
 
-        if (matchCount == 0) return 50.0;
+        if (matchCount == 0) return NOT_ASSESSABLE;
         return clampScore(matchScore / matchCount);
     }
 }

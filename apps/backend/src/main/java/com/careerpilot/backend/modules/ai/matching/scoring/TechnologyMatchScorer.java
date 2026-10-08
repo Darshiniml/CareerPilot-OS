@@ -24,7 +24,7 @@ public class TechnologyMatchScorer implements MatchScorer {
         Set<String> companyTech = company.getTechnologyStack();
 
         if (jobTech.isEmpty() && companyTech.isEmpty()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         double jobTechScore = 0.0;

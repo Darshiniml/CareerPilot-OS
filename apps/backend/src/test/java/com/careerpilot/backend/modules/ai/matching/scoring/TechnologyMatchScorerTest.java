@@ -91,6 +91,6 @@ class TechnologyMatchScorerTest {
                 .build();
 
         double score = scorer.score(candidate, CompanyProfile.builder().build(), job);
-        assertEquals(100.0, score, 0.01);
+        assertTrue(Double.isNaN(score), "no technology data is not assessable");
     }
 }

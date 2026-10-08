@@ -13,6 +13,7 @@ import java.io.InputStream;
 
 @Service
 @Slf4j
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "storage.type", havingValue = "s3", matchIfMissing = true)
 public class MinioStorageService implements StorageService {
 
     private final S3Client s3Client;

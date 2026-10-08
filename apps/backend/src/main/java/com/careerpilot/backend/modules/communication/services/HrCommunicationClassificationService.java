@@ -16,7 +16,6 @@ import com.careerpilot.shared.dto.ai.AiTaskResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -55,7 +54,8 @@ public class HrCommunicationClassificationService {
     private final AiGatewayClient aiGatewayClient;
     private final ClassificationResultParser classificationResultParser;
 
-    @Transactional
+    // Not transactional: the model call must not pin a DB connection. Each save is its own short
+    // transaction and returns the entity with its bumped optimistic-lock version, which is kept.
     public ClassificationOutcome classify(UUID candidateId, UUID communicationId) {
         HrCommunication communication = communicationRepository
                 .findByIdAndCandidateId(communicationId, candidateId)
@@ -64,7 +64,7 @@ public class HrCommunicationClassificationService {
 
         communication.setProcessingStatus(CommunicationProcessingStatus.PROCESSING);
         communication.setUpdatedAt(Instant.now());
-        communicationRepository.save(communication);
+        communication = communicationRepository.save(communication);
 
         AiTaskRequestDto request = AiTaskRequestDto.builder()
                 .taskId(UUID.randomUUID())

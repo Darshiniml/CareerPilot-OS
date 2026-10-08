@@ -26,7 +26,8 @@ public class ApplicationAgentTest {
         com.careerpilot.backend.modules.application.services.SubmissionPreflightService preflightService = mock(com.careerpilot.backend.modules.application.services.SubmissionPreflightService.class);
 
         ApplicationAgent agent = new ApplicationAgent(
-                jobDiscoveryService, connectorRegistry, resumeRepository, resumeVersionRepository, applicationOrchestratorService, eventPublisher, preflightService);
+                jobDiscoveryService, connectorRegistry, resumeRepository, resumeVersionRepository, applicationOrchestratorService, eventPublisher, preflightService,
+                mock(com.careerpilot.backend.modules.ai.matching.MatchService.class));
 
         UUID userId = UUID.randomUUID();
         when(resumeRepository.findDefaultByUserId(userId)).thenReturn(Optional.empty());

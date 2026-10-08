@@ -275,6 +275,7 @@ public class ResumeService {
                 .storageKey(resume.getStorageKey())
                 .parsingStatus(resume.getParsingStatus())
                 .aiProcessingStatus(resume.getAiProcessingStatus())
+                .processingError(resume.getAiProcessingError())
                 .isDefault(resume.isDefault())
                 .isArchived(resume.isArchived())
                 .uploadedAt(resume.getUploadedAt())

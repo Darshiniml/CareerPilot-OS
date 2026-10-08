@@ -9,6 +9,11 @@ allprojects {
     group = "com.careerpilot"
     version = "1.0.0"
 
+    // Optional: keep build output outside a synced folder (e.g. OneDrive locks files under build/).
+    System.getenv("CAREERPILOT_BUILD_ROOT")?.let { root ->
+        layout.buildDirectory.set(file("$root/${project.path.replace(':', '_')}"))
+    }
+
     repositories {
         mavenCentral()
     }

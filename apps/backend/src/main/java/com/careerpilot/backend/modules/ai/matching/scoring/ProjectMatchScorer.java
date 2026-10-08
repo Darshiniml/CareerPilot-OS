@@ -68,7 +68,7 @@ public class ProjectMatchScorer implements MatchScorer {
             }
         }
 
-        if (totalChecks == 0) return 50.0;
+        if (totalChecks == 0) return NOT_ASSESSABLE;
         return clampScore((matches * 100.0) / totalChecks);
     }
 }

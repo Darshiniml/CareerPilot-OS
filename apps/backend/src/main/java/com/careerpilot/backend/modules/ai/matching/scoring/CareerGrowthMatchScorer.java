@@ -31,7 +31,7 @@ public class CareerGrowthMatchScorer implements MatchScorer {
 
     private double computeGrowthScore(List<String> growthIndicators, String companySize) {
         if (growthIndicators == null || growthIndicators.isEmpty()) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         double score = 50.0;

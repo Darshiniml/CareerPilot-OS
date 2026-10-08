@@ -46,18 +46,26 @@ public class AgentOrchestratorTest {
                 
         when(executionRepository.findByStatus(AgentExecutionStatus.RUNNING)).thenReturn(List.of(activeExec));
         
+        UUID owner = UUID.randomUUID();
+        UUID workflowId = UUID.randomUUID();
         AgentTask task = AgentTask.builder()
                 .id(taskId)
+                .workflowId(workflowId)
                 .taskType("MOCK_TASK")
                 .build();
         when(taskRepository.findById(taskId)).thenReturn(Optional.of(task));
-        
-        Map<String, Object> result = orchestrator.getActiveExecutions();
+        when(workflowRepository.findById(workflowId)).thenReturn(Optional.of(
+                com.careerpilot.backend.modules.agent.domain.AgentWorkflow.builder().id(workflowId).userId(owner).build()));
+
+        Map<String, Object> result = orchestrator.getActiveExecutions(owner);
         assertNotNull(result);
         assertEquals(1, result.get("activeAgents"));
-        
+
         List<Map<String, Object>> list = (List<Map<String, Object>>) result.get("executions");
         assertEquals("mock-agent", list.get(0).get("agentId"));
         assertEquals("MOCK_TASK", list.get(0).get("taskType"));
+
+        // Another user never sees these executions.
+        assertEquals(0, orchestrator.getActiveExecutions(UUID.randomUUID()).get("activeAgents"));
     }
 }

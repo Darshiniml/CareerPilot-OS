@@ -8,13 +8,10 @@ import com.careerpilot.backend.modules.ai.resume.domain.ResumeIntelligenceCache;
 import com.careerpilot.backend.modules.ai.resume.domain.ResumeValidationReport;
 import com.careerpilot.backend.modules.ai.resume.repositories.ResumeIntelligenceCacheRepository;
 import com.careerpilot.backend.modules.ai.resume.repositories.ResumeValidationReportRepository;
-import com.careerpilot.shared.dto.ai.AiTaskRequestDto;
-import com.careerpilot.shared.dto.ai.AiTaskResponseDto;
 import com.careerpilot.shared.events.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -46,65 +43,52 @@ public class ResumeIntelligenceService {
         this.eventPublisher = eventPublisher;
     }
 
-    @Transactional
+    // Not transactional: model calls must not pin a pooled DB connection (see JobIntelligenceService).
     public AiDocument processResume(UUID documentId) {
         AiDocument document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new IllegalArgumentException("Resume document not found"));
 
-        String textContent = document.getContent() != null ? document.getContent() : "Sample resume details";
+        String textContent = document.getContent();
+        if (textContent == null || textContent.isBlank()) {
+            throw new IllegalStateException("Resume has no extracted text; upload a text-based PDF, DOCX or TXT file");
+        }
         String checksum = calculateChecksum(textContent.getBytes());
         document.setChecksum(checksum);
 
+        // Cache keyed by the exact text checksum: identical input yields the identical (already
+        // validated) parse, so no model output is reused for different content.
         Optional<ResumeIntelligenceCache> cacheOpt = cacheRepository.findById(checksum);
         Map<String, Object> knowledge;
         Map<String, Object> qualityMetrics;
 
         if (cacheOpt.isPresent()) {
-            log.info("Resume intelligence parsing cache HIT for checksum: {}", checksum);
+            log.info("Resume intelligence cache HIT for checksum {}", checksum);
             ResumeIntelligenceCache cache = cacheOpt.get();
             knowledge = cache.getStructuredKnowledge();
             qualityMetrics = cache.getQualityMetrics();
         } else {
-            log.info("Resume intelligence parsing cache MISS for checksum: {}", checksum);
-            
+            log.info("Resume intelligence cache MISS for checksum {}", checksum);
             Map<String, Object> parsePayload = new HashMap<>();
-            parsePayload.put("title", document.getTitle());
-            parsePayload.put("documentType", "RESUME");
             parsePayload.put("content", textContent);
-
-            AiTaskRequestDto parseRequest = AiTaskRequestDto.builder()
-                    .taskId(UUID.randomUUID())
-                    .taskType("RESUME_PARSE")
-                    .payload(parsePayload)
-                    .build();
-
-            AiTaskResponseDto parseResponse = gatewayClient.executeTask(parseRequest);
-            knowledge = parseResponse.getResult();
+            knowledge = gatewayClient.run("RESUME_PARSE", parsePayload);
 
             Map<String, Object> atsPayload = new HashMap<>();
             atsPayload.put("knowledge", knowledge);
+            atsPayload.put("content", textContent);
+            qualityMetrics = gatewayClient.run("RESUME_ATS", atsPayload);
 
-            AiTaskRequestDto atsRequest = AiTaskRequestDto.builder()
-                    .taskId(UUID.randomUUID())
-                    .taskType("JOB_MATCH")
-                    .payload(atsPayload)
-                    .build();
-
-            AiTaskResponseDto atsResponse = gatewayClient.executeTask(atsRequest);
-            qualityMetrics = atsResponse.getResult();
-
-            ResumeIntelligenceCache cache = ResumeIntelligenceCache.builder()
+            cacheRepository.save(ResumeIntelligenceCache.builder()
                     .checksumSha256(checksum)
                     .parsedText(textContent)
                     .structuredKnowledge(knowledge)
                     .qualityMetrics(qualityMetrics)
-                    .build();
-            cacheRepository.save(cache);
+                    .build());
         }
 
         document.setStructuredMetadata(knowledge);
         document.setFlexibleMetadata(qualityMetrics);
         
+        documentRepository.save(document);
         runValidation(document, textContent);
 
         AiDocument processed = pipelineService.processDocument(documentId);

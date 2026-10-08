@@ -1,119 +1,133 @@
-import React from 'react';
+import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
-import {
-  LayoutDashboard,
-  User,
-  FileText,
-  Briefcase,
-  Target,
-  Send,
-  Video,
-  GraduationCap,
-  Sparkles,
-  BarChart3,
-  Settings,
-  Cpu,
-  LogOut,
-  Plane,
-  X,
-  Award
-} from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, Plane, X } from 'lucide-react';
+import { NAV } from './nav';
+import { cn } from '../../lib/format';
 
-interface SidebarProps {
-  mobileOpen?: boolean;
-  onCloseMobile?: () => void;
+function NavContent({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
+  return (
+    <nav aria-label="Main" className="flex-1 overflow-y-auto px-2 py-3">
+      {NAV.map((section) => (
+        <div key={section.title} className="mb-4">
+          {!collapsed && (
+            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{section.title}</p>
+          )}
+          <ul className="space-y-0.5">
+            {section.items.map((item) => (
+              <li key={item.to}>
+                <NavLink
+                  to={item.to}
+                  onClick={onNavigate}
+                  title={collapsed ? item.label : undefined}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      collapsed && 'justify-center px-0',
+                      isActive ? 'bg-primary-soft text-primary-soft-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
+                    )
+                  }
+                >
+                  <item.icon className="h-4 w-4 shrink-0" aria-hidden />
+                  {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) => {
-  const clearAuth = useAuthStore((state) => state.clearAuth);
+function Brand({ collapsed }: { collapsed: boolean }) {
+  return (
+    <div className={cn('flex items-center gap-2.5', collapsed && 'justify-center')}>
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-fg">
+        <Plane className="h-4 w-4" aria-hidden />
+      </div>
+      {!collapsed && <span className="text-sm font-semibold tracking-tight text-fg">CareerPilot</span>}
+    </div>
+  );
+}
 
-  const menuItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Profile', path: '/profile', icon: User },
-    { name: 'Resumes', path: '/resumes', icon: FileText },
-    { name: 'Jobs', path: '/jobs', icon: Briefcase },
-    { name: 'Opportunities', path: '/opportunities', icon: Award },
-    { name: 'AI Matching', path: '/matching', icon: Target },
-    { name: 'Applications', path: '/applications', icon: Send },
-    { name: 'Interviews', path: '/interviews', icon: Video },
-    { name: 'Learning', path: '/learning', icon: GraduationCap },
-    { name: 'Career Copilot', path: '/copilot', icon: Sparkles },
-    { name: 'Automation Agents', path: '/agents', icon: Cpu },
-    { name: 'Analytics', path: '/analytics', icon: BarChart3 },
-    { name: 'Settings', path: '/settings', icon: Settings },
-  ];
+export function Sidebar({
+  collapsed,
+  onToggleCollapsed,
+  mobileOpen,
+  onCloseMobile,
+}: {
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
+}) {
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCloseMobile();
+    document.addEventListener('keydown', onKey);
+    drawerRef.current?.querySelector<HTMLElement>('a,button')?.focus();
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen, onCloseMobile]);
 
   return (
-    <aside
-      className={`sidebar fixed lg:sticky top-0 bottom-0 left-0 z-50 transition-transform duration-300 ${
-        mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      }`}
-    >
-      {/* Brand logo */}
-      <div className="h-16 flex items-center justify-between px-6 border-b border-white/10">
-        <div className="flex items-center gap-3 select-none">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-            <Plane className="w-5 h-5 text-white transform -rotate-45" />
-          </div>
-          <div>
-            <span className="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5 font-heading">
-              CareerPilot <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-sans">OS</span>
-            </span>
+    <>
+      {/* Desktop */}
+      <aside
+        className={cn(
+          'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border bg-surface lg:flex',
+          collapsed ? 'w-[68px]' : 'w-60',
+        )}
+      >
+        <div className="flex h-14 items-center border-b border-border px-4">
+          <Brand collapsed={collapsed} />
+        </div>
+        <NavContent collapsed={collapsed} />
+        <div className="border-t border-border p-2">
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+            {!collapsed && 'Collapse'}
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile drawer (overlays content) */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-overlay" aria-hidden onClick={onCloseMobile} />
+          <div
+            ref={drawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface shadow-card"
+          >
+            <div className="flex h-14 items-center justify-between border-b border-border px-4">
+              <Brand collapsed={false} />
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg"
+                aria-label="Close navigation"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <NavContent collapsed={false} onNavigate={onCloseMobile} />
           </div>
         </div>
-
-        {/* Mobile close button */}
-        {onCloseMobile && (
-          <button
-            onClick={onCloseMobile}
-            className="lg:hidden text-slate-400 hover:text-white p-1 rounded-lg"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
-
-      {/* Nav List */}
-      <nav className="flex-1 px-3 py-5 overflow-y-auto space-y-1">
-        {menuItems.map((item) => (
-          <NavLink
-            key={item.name}
-            to={item.path}
-            onClick={onCloseMobile}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 select-none group ${
-                isActive
-                  ? 'bg-gradient-to-r from-indigo-600/30 to-purple-600/20 text-white border border-indigo-500/40 shadow-sm shadow-indigo-500/10'
-                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <item.icon className={`w-4 h-4 transition-transform duration-200 group-hover:scale-110 ${
-                  isActive ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
-                }`} />
-                <span>{item.name}</span>
-                {isActive && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-sm shadow-indigo-400" />
-                )}
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* Footer / Logout */}
-      <div className="p-3 border-t border-white/10">
-        <button
-          onClick={() => clearAuth()}
-          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 border border-transparent hover:border-rose-500/20 transition-all select-none"
-        >
-          <LogOut className="w-4 h-4" />
-          Sign Out
-        </button>
-      </div>
-    </aside>
+      )}
+    </>
   );
-};
+}

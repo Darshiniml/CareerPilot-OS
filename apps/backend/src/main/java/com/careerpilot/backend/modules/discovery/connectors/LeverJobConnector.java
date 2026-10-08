@@ -153,38 +153,45 @@ public class LeverJobConnector implements Connector {
 
     private DiscoveredJob parseLeverJob(String company, JsonNode node) {
         try {
-            String externalId = "lever-" + company + "-" + node.get("id").asText();
-            String title = node.has("text") ? node.get("text").asText() : "Software Engineer";
-            String applyUrl = node.has("hostedUrl") ? node.get("hostedUrl").asText() : "https://jobs.lever.co/" + company;
-            
-            String location = "Remote";
-            if (node.has("categories") && node.get("categories").has("location")) {
-                location = node.get("categories").get("location").asText();
+            String id = ConnectorParsing.text(node, "id");
+            String title = ConnectorParsing.text(node, "text");
+            String description = ConnectorParsing.text(node, "descriptionPlain");
+            if (id == null || title == null || description == null) {
+                return null;
             }
-
-            String companyName = company.substring(0, 1).toUpperCase() + company.substring(1);
-            String description = title + " position at " + companyName + " in " + location;
-            if (node.has("descriptionPlain")) {
-                description = node.get("descriptionPlain").asText();
+            StringBuilder content = new StringBuilder(description);
+            if (node.has("lists") && node.get("lists").isArray()) {
+                for (JsonNode list : node.get("lists")) {
+                    String heading = ConnectorParsing.text(list, "text");
+                    String body = ConnectorParsing.plainText(ConnectorParsing.text(list, "content"));
+                    if (heading != null) content.append("\n\n").append(heading);
+                    if (body != null) content.append("\n").append(body);
+                }
             }
-
+            String additional = ConnectorParsing.text(node, "additionalPlain");
+            if (additional != null) content.append("\n\n").append(additional);
+            JsonNode categories = node.get("categories");
+            String location = categories != null ? ConnectorParsing.text(categories, "location") : null;
+            String commitment = categories != null ? ConnectorParsing.text(categories, "commitment") : null;
+            String companyName = ConnectorParsing.capitalize(company);
+            String text = content.length() > ConnectorParsing.MAX_CONTENT ? content.substring(0, ConnectorParsing.MAX_CONTENT) : content.toString();
             return DiscoveredJob.builder()
-                    .externalId(externalId)
+                    .externalId("lever-" + company + "-" + id)
                     .connectorId(getConnectorId())
                     .source("Lever (" + companyName + ")")
-                    .sourceUrl(applyUrl)
+                    .sourceUrl(ConnectorParsing.text(node, "hostedUrl"))
                     .title(title)
                     .company(companyName)
                     .location(location)
-                    .employmentType("FULL_TIME")
-                    .workMode(location.toLowerCase().contains("remote") ? "REMOTE" : "HYBRID")
-                    .rawContent(description.length() > 3000 ? description.substring(0, 3000) : description)
-                    .postedDate(LocalDateTime.now(ZoneOffset.UTC))
+                    .employmentType(ConnectorParsing.employmentType(commitment))
+                    .workMode(ConnectorParsing.workMode(ConnectorParsing.text(node, "workplaceType"), location))
+                    .rawContent(text)
+                    .postedDate(ConnectorParsing.epochMillis(node, "createdAt"))
                     .discoveredAt(LocalDateTime.now(ZoneOffset.UTC))
                     .normalizedTitle(title.trim())
-                    .normalizedCompany(companyName.trim())
-                    .skills(List.of("Software Engineering", "Fullstack", "Backend"))
-                    .metadata(Map.of("company", company, "externalId", node.get("id").asText()))
+                    .normalizedCompany(companyName)
+                    .skills(List.of())
+                    .metadata(Map.of("company", company, "externalId", id))
                     .build();
         } catch (Exception e) {
             return null;

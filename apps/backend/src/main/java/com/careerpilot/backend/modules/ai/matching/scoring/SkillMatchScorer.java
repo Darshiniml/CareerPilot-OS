@@ -21,7 +21,7 @@ public class SkillMatchScorer implements MatchScorer {
     public double score(CandidateProfile candidate, CompanyProfile company, JobProfile job) {
         Set<String> required = job.getRequiredSkills();
         if (required.isEmpty() && job.getPreferredSkills().isEmpty()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
         if (required.isEmpty()) {
             return clampScore(jaccardSimilarity(candidate.getSkills(), job.getPreferredSkills()));

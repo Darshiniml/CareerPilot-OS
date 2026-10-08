@@ -27,9 +27,15 @@ public class ScoreAggregator {
         double weightedSum = 0.0;
         double totalWeight = 0.0;
 
+        java.util.List<String> notAssessed = new java.util.ArrayList<>();
         for (MatchScorer scorer : scorers) {
             String factorName = scorer.getFactorName();
             double score = scorer.score(candidate, company, job);
+            if (Double.isNaN(score)) {
+                // Missing data: excluded from the weighted score instead of counted as an invented value.
+                notAssessed.add(factorName);
+                continue;
+            }
             individualScores.put(factorName, score);
 
             Double weight = weights.get(factorName);
@@ -41,10 +47,13 @@ public class ScoreAggregator {
 
         double overallScore = totalWeight > 0 ? weightedSum / totalWeight : 0.0;
 
+        java.util.Collections.sort(notAssessed);
         return new AggregationResult(
                 clampScore(overallScore),
                 individualScores,
-                weights
+                weights,
+                notAssessed,
+                totalWeight
         );
     }
 
@@ -55,6 +64,12 @@ public class ScoreAggregator {
     public record AggregationResult(
             double overallScore,
             Map<String, Double> individualScores,
-            Map<String, Double> weights
-    ) {}
+            Map<String, Double> weights,
+            java.util.List<String> notAssessedFactors,
+            double assessedWeight
+    ) {
+        public AggregationResult(double overallScore, Map<String, Double> individualScores, Map<String, Double> weights) {
+            this(overallScore, individualScores, weights, java.util.List.of(), 0.0);
+        }
+    }
 }

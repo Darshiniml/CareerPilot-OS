@@ -62,6 +62,9 @@ public class Resume {
     @Builder.Default
     private String aiProcessingStatus = "PENDING";
 
+    @Column(name = "ai_processing_error", length = 1000)
+    private String aiProcessingError;
+
     @Column(name = "is_default", nullable = false)
     @Builder.Default
     private boolean isDefault = false;

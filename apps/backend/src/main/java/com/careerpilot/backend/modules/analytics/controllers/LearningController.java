@@ -23,24 +23,27 @@ import java.util.*;
 public class LearningController {
 
     private final CareerAnalyticsService analyticsService;
-    private final LearningPathEngine learningPathEngine;
+    private final com.careerpilot.backend.modules.analytics.services.LearningPlanService learningPlanService;
     private final LearningPathRepository learningPathRepository;
     private final LearningProgressRepository learningProgressRepository;
     private final CareerGoalRepository careerGoalRepository;
     private final CareerGoalProgressRepository goalProgressRepository;
     private final DataCollector dataCollector;
-    private final SkillDemandAnalyzer skillDemandAnalyzer;
-    private final InterviewAnalyzer interviewAnalyzer;
-    private final CareerInsights careerInsights;
     private final UserRepository userRepository;
     private final CareerLearningRecommendationService careerLearningRecommendationService;
 
     @PostMapping("/path")
-    @Operation(summary = "Generate a prerequisite-aware learning path for a skill")
+    @Operation(summary = "Generate an AI learning plan for a skill (grounded in your real skill gaps)")
     public ResponseEntity<LearningPath> createPath(Principal principal, @RequestBody PathRequest request) {
         UUID candidateId = getUserId(principal);
-        LearningPath path = learningPathEngine.generateLearningPath(candidateId, request.skill(), request.currentLevel(), request.targetLevel());
+        LearningPath path = learningPlanService.createPlan(candidateId, request.skill(), request.currentLevel(),
+                request.targetLevel(), request.weeklyHours());
         return ResponseEntity.status(HttpStatus.CREATED).body(path);
+    }
+
+    @GetMapping("/paths")
+    public ResponseEntity<List<LearningPath>> listPaths(Principal principal) {
+        return ResponseEntity.ok(learningPathRepository.findByCandidateId(getUserId(principal)));
     }
 
     @GetMapping("/path/{id}")
@@ -58,38 +61,9 @@ public class LearningController {
     }
 
     @GetMapping("/recommendations")
-    public ResponseEntity<List<Map<String, Object>>> getRecommendations(Principal principal) {
-        UUID candidateId = getUserId(principal);
-        Map<String, Object> collected = dataCollector.collectCandidateData(candidateId);
-        
-        Set<String> candidateSkills = new HashSet<>();
-        var resumeCache = (com.careerpilot.backend.modules.ai.resume.domain.ResumeIntelligenceCache) collected.get("resumeCache");
-        if (resumeCache != null) {
-            Map<String, Object> knowledge = resumeCache.getStructuredKnowledge();
-            if (knowledge != null && knowledge.containsKey("skills")) {
-                List<?> rawSkills = (List<?>) knowledge.get("skills");
-                for (Object item : rawSkills) {
-                    if (item instanceof Map<?, ?> map) {
-                        Object skillVal = map.get("skill");
-                        if (skillVal == null) skillVal = map.get("name");
-                        if (skillVal != null) candidateSkills.add(skillVal.toString().toLowerCase().trim());
-                    } else if (item != null) {
-                        candidateSkills.add(item.toString().toLowerCase().trim());
-                    }
-                }
-            }
-        }
-
-        Map<String, Object> skillAnalysis = skillDemandAnalyzer.analyzeSkills(candidateSkills);
-        List<String> missingSkills = (List<String>) skillAnalysis.getOrDefault("missingSkills", List.of());
-        Map<String, Double> demandPercentages = (Map<String, Double>) skillAnalysis.getOrDefault("demandPercentages", Map.of());
-
-        var ints = (List<com.careerpilot.backend.modules.interview.domain.InterviewSession>) collected.getOrDefault("interviews", List.of());
-        Map<String, Object> intAnalysis = interviewAnalyzer.analyzeInterviews(ints);
-        Map<String, Object> scores = (Map<String, Object>) intAnalysis.getOrDefault("averageQuestionScores", Map.of());
-
-        List<Map<String, Object>> recommendations = careerInsights.generateRecommendations(missingSkills, demandPercentages, scores);
-        return ResponseEntity.ok(recommendations);
+    @Operation(summary = "Skill gaps to learn, with the real evidence for each (job demand, interview practice)")
+    public ResponseEntity<Map<String, Object>> getRecommendations(Principal principal) {
+        return ResponseEntity.ok(learningPlanService.recommendations(getUserId(principal)));
     }
 
     @GetMapping("/career-recommendations")
@@ -162,7 +136,7 @@ public class LearningController {
                 .getId();
     }
 
-    public record PathRequest(String skill, String currentLevel, String targetLevel) {}
+    public record PathRequest(String skill, String currentLevel, String targetLevel, Integer weeklyHours) {}
     public record ProgressRequest(String skill, double progressPercentage, String status) {}
     public record GoalRequest(String targetRole, String targetIndustry, Double targetSalary, String targetLocation, Integer timelineMonths) {}
     public record GoalProgressUpdateRequest(double learningPlanProgress, double overallProgress, boolean isCompleted) {}

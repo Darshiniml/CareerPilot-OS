@@ -44,7 +44,6 @@ class IntegrationTest {
                 notificationRepository,
                 policyRepository,
                 null,
-                new ApplicationWorkflowEngine(),
                 new EligibilityEngine(),
                 new ResumeSelectionEngine(),
                 new ApprovalPolicyEngine(),

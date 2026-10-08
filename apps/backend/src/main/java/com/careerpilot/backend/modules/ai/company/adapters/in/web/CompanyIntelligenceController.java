@@ -1,117 +1,155 @@
 package com.careerpilot.backend.modules.ai.company.adapters.in.web;
 
+import com.careerpilot.backend.config.CurrentUser;
 import com.careerpilot.backend.modules.ai.company.services.CompanyIntelligenceService;
+import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
+import com.careerpilot.backend.modules.ai.job.services.JobContextService;
 import com.careerpilot.backend.modules.ai.knowledge.domain.AiDocument;
 import com.careerpilot.backend.modules.ai.knowledge.repositories.AiDocumentRepository;
-import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
-import com.careerpilot.shared.dto.ai.AiTaskRequestDto;
-import com.careerpilot.shared.dto.ai.AiTaskResponseDto;
-import com.careerpilot.shared.dto.ai.company.CompanySearchQueryDto;
+import com.careerpilot.backend.modules.ai.web.SafeWebPageFetcher;
+import com.careerpilot.backend.modules.discovery.domain.DiscoveryJob;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.*;
 
+/**
+ * Company intelligence built only from real sources: the job posting's own text and public pages the
+ * user explicitly provides. The model is told not to use outside knowledge; facts are grounded.
+ */
 @RestController
 @RequestMapping("/api/v1/ai/company")
-@Tag(name = "Company Intelligence Engine", description = "Endpoints for parsing company information, analyzing tech stacks, and retrieving engineering profiles")
+@Tag(name = "Company Intelligence Engine", description = "Company analysis and research from real sources")
 @SecurityRequirement(name = "bearerAuth")
 public class CompanyIntelligenceController {
+
+    private static final int MAX_RESEARCH_URLS = 3;
 
     private final AiDocumentRepository documentRepository;
     private final CompanyIntelligenceService companyIntelligenceService;
     private final AiGatewayClient gatewayClient;
+    private final JobContextService jobContextService;
+    private final SafeWebPageFetcher webPageFetcher;
+    private final CurrentUser currentUser;
 
-    public CompanyIntelligenceController(
-            AiDocumentRepository documentRepository,
-            CompanyIntelligenceService companyIntelligenceService,
-            AiGatewayClient gatewayClient) {
+    public CompanyIntelligenceController(AiDocumentRepository documentRepository,
+                                         CompanyIntelligenceService companyIntelligenceService,
+                                         AiGatewayClient gatewayClient,
+                                         JobContextService jobContextService,
+                                         SafeWebPageFetcher webPageFetcher,
+                                         CurrentUser currentUser) {
         this.documentRepository = documentRepository;
         this.companyIntelligenceService = companyIntelligenceService;
         this.gatewayClient = gatewayClient;
-    }
-
-    @PostMapping("/process")
-    @Operation(summary = "Process ingested company content", description = "Triggers crawler parsing, canonical domain mapping, categorized insights, and chunk indexing")
-    public ResponseEntity<AiDocument> processCompany(
-            @RequestParam("documentId") UUID documentId,
-            @RequestParam(value = "url", required = false) String url) {
-        AiDocument doc = companyIntelligenceService.processCompany(documentId, null, url);
-        return ResponseEntity.ok(doc);
+        this.jobContextService = jobContextService;
+        this.webPageFetcher = webPageFetcher;
+        this.currentUser = currentUser;
     }
 
     @PostMapping("/process-url")
-    @Operation(summary = "Initiates website crawl parsing", description = "Crawl parsing triggers complete pipeline from external company URL links")
-    public ResponseEntity<AiDocument> processCompanyUrl(
-            @RequestParam("ownerId") UUID ownerId,
-            @RequestParam("url") String url) {
-        AiDocument doc = companyIntelligenceService.processCompanyUrl(ownerId, url);
-        return ResponseEntity.ok(doc);
+    @Operation(summary = "Fetch a public company page and analyse it with AI")
+    public ResponseEntity<Map<String, Object>> processCompanyUrl(@RequestParam("url") String url, Principal principal) {
+        UUID userId = currentUser.requireId(principal);
+        return ResponseEntity.ok(view(companyIntelligenceService.processCompanyUrl(userId, url)));
+    }
+
+    /**
+     * Research the company behind a discovered job, using the posting text plus up to three public
+     * URLs the user supplies (e.g. the company's careers or engineering blog page).
+     */
+    @PostMapping("/research")
+    @Operation(summary = "AI company research summary from the job posting and user-supplied public pages")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<Map<String, Object>> research(@RequestBody Map<String, Object> body, Principal principal) {
+        currentUser.requireId(principal);
+        Object jobIdRaw = body.get("jobId");
+        if (jobIdRaw == null) {
+            throw new IllegalArgumentException("jobId is required");
+        }
+        DiscoveryJob job = jobContextService.requireJob(UUID.fromString(String.valueOf(jobIdRaw)));
+        List<Map<String, Object>> sources = new ArrayList<>();
+        sources.add(Map.of("source", "job-posting:" + job.getConnectorId(), "text", jobContextService.jobText(job)));
+        List<Map<String, String>> fetchErrors = new ArrayList<>();
+        List<String> urls = body.get("urls") instanceof List<?> l ? (List<String>) l : List.of();
+        for (String url : urls.stream().limit(MAX_RESEARCH_URLS).toList()) {
+            try {
+                SafeWebPageFetcher.FetchedPage page = webPageFetcher.fetch(url);
+                String text = page.text().length() > 8000 ? page.text().substring(0, 8000) : page.text();
+                sources.add(Map.of("source", page.finalUrl(), "text", text));
+            } catch (IllegalArgumentException | IllegalStateException e) {
+                fetchErrors.add(Map.of("url", url, "error", e.getMessage()));
+            }
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("sources", sources);
+        payload.put("context", Map.of("company", Objects.toString(job.getCompany(), "unknown"),
+                "role", Objects.toString(job.getTitle(), "unknown")));
+        Map<String, Object> result = new LinkedHashMap<>(gatewayClient.run("COMPANY_RESEARCH_SUMMARY", payload));
+        result.put("company", job.getCompany());
+        result.put("jobId", job.getId());
+        result.put("fetchErrors", fetchErrors);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get parsed Company Knowledge details")
-    public ResponseEntity<Map<String, Object>> getCompanyKnowledge(@PathVariable("id") UUID id) {
-        AiDocument doc = documentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
-        return ResponseEntity.ok(doc.getStructuredMetadata() != null ? doc.getStructuredMetadata() : new HashMap<>());
+    public ResponseEntity<Map<String, Object>> getCompany(@PathVariable("id") UUID id, Principal principal) {
+        return ResponseEntity.ok(view(readable(id, currentUser.requireId(principal))));
     }
 
     @GetMapping("/{id}/metadata")
-    @Operation(summary = "Get company metadata taxonomy metrics")
-    public ResponseEntity<Map<String, Object>> getCompanyMetadata(@PathVariable("id") UUID id) {
-        AiDocument doc = documentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
-        Map<String, Object> response = new HashMap<>();
-        if (doc.getFlexibleMetadata() != null && doc.getFlexibleMetadata().containsKey("metadata")) {
-            Object meta = doc.getFlexibleMetadata().get("metadata");
-            if (meta instanceof Map) {
-                return ResponseEntity.ok((Map<String, Object>) meta);
-            }
-        }
-        return ResponseEntity.ok(response);
+    public ResponseEntity<Object> getCompanyMetadata(@PathVariable("id") UUID id, Principal principal) {
+        return ResponseEntity.ok(flexible(readable(id, currentUser.requireId(principal)), "metadata"));
     }
 
     @GetMapping("/{id}/insights")
-    @Operation(summary = "Get categorized business and engineering insights")
-    public ResponseEntity<Map<String, Object>> getCompanyInsights(@PathVariable("id") UUID id) {
-        AiDocument doc = documentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
-        Map<String, Object> response = new HashMap<>();
-        if (doc.getFlexibleMetadata() != null && doc.getFlexibleMetadata().containsKey("insights")) {
-            Object insights = doc.getFlexibleMetadata().get("insights");
-            if (insights instanceof Map) {
-                return ResponseEntity.ok((Map<String, Object>) insights);
-            }
-        }
-        return ResponseEntity.ok(response);
+    public ResponseEntity<Object> getCompanyInsights(@PathVariable("id") UUID id, Principal principal) {
+        return ResponseEntity.ok(flexible(readable(id, currentUser.requireId(principal)), "insights"));
     }
 
     @PostMapping("/search")
-    @Operation(summary = "Retrieve matching company profiles by semantic technologies and size filters")
-    public ResponseEntity<Map<String, Object>> searchCompanies(@RequestBody CompanySearchQueryDto queryDto) {
+    @Operation(summary = "Semantic search over analysed company documents")
+    public ResponseEntity<Map<String, Object>> searchCompanies(@RequestBody Map<String, Object> body, Principal principal) {
+        currentUser.requireId(principal);
+        String query = body.get("query") instanceof String q ? q.trim() : "";
+        if (query.isEmpty()) {
+            throw new IllegalArgumentException("query is required");
+        }
         Map<String, Object> payload = new HashMap<>();
-        payload.put("query", queryDto.getQuery());
-        payload.put("collection", "company_vectors");
-        payload.put("industryFilter", queryDto.getIndustryFilter());
-        payload.put("technologyFilter", queryDto.getTechnologyFilter());
-        payload.put("locationFilter", queryDto.getLocationFilter());
-        payload.put("companySizeFilter", queryDto.getCompanySizeFilter());
-        payload.put("remotePolicyFilter", queryDto.getRemotePolicyFilter());
-        payload.put("page", queryDto.getPage() != null ? queryDto.getPage() : 1);
-        payload.put("size", queryDto.getSize() != null ? queryDto.getSize() : 5);
-        payload.put("scoreThreshold", queryDto.getScoreThreshold() != null ? queryDto.getScoreThreshold() : 0.0);
+        payload.put("query", query);
+        payload.put("documentType", "COMPANY");
+        payload.put("limit", body.get("limit") instanceof Number n ? n.intValue() : 5);
+        return ResponseEntity.ok(gatewayClient.run("COMPANY_SEARCH", payload));
+    }
 
-        AiTaskRequestDto request = AiTaskRequestDto.builder()
-                .taskId(UUID.randomUUID())
-                .taskType("COMPANY_SEARCH")
-                .payload(payload)
-                .build();
+    private AiDocument readable(UUID id, UUID userId) {
+        AiDocument doc = documentRepository.findById(id)
+                .filter(d -> "COMPANY".equalsIgnoreCase(d.getDocumentType()))
+                .orElseThrow(() -> new NoSuchElementException("Company not found"));
+        if (doc.getOwnerId() != null && !doc.getOwnerId().equals(userId)) {
+            throw new NoSuchElementException("Company not found");
+        }
+        return doc;
+    }
 
-        AiTaskResponseDto response = gatewayClient.executeTask(request);
-        return ResponseEntity.ok(response.getResult());
+    private static Object flexible(AiDocument doc, String key) {
+        Map<String, Object> flexible = doc.getFlexibleMetadata();
+        Object value = flexible != null ? flexible.get(key) : null;
+        return value != null ? value : Map.of();
+    }
+
+    private static Map<String, Object> view(AiDocument doc) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("documentId", doc.getId());
+        view.put("status", doc.getStatus());
+        view.put("title", doc.getTitle());
+        view.put("source", doc.getSource());
+        view.put("knowledge", doc.getStructuredMetadata());
+        view.put("metadata", flexible(doc, "metadata"));
+        view.put("insights", flexible(doc, "insights"));
+        return view;
     }
 }

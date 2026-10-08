@@ -294,12 +294,14 @@ public class AgentOrchestrator {
         }
     }
 
-    public Map<String, Object> getActiveExecutions() {
+    public Map<String, Object> getActiveExecutions(UUID userId) {
         List<AgentExecution> activeExecutions = executionRepository.findByStatus(AgentExecutionStatus.RUNNING);
         List<Map<String, Object>> exList = new ArrayList<>();
         
         for (AgentExecution exec : activeExecutions) {
-            Optional<AgentTask> taskOpt = taskRepository.findById(exec.getTaskId());
+            Optional<AgentTask> taskOpt = taskRepository.findById(exec.getTaskId())
+                    .filter(task -> workflowRepository.findById(task.getWorkflowId())
+                            .map(w -> userId.equals(w.getUserId())).orElse(false));
             if (taskOpt.isPresent()) {
                 Map<String, Object> item = new HashMap<>();
                 item.put("agentId", exec.getAgentId());

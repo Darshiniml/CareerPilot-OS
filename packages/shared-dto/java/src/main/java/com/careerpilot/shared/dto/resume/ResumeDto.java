@@ -1,5 +1,6 @@
 package com.careerpilot.shared.dto.resume;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,7 +25,11 @@ public class ResumeDto {
     private String storageKey;
     private String parsingStatus;
     private String aiProcessingStatus;
+    /** Explicit reason when AI processing failed (e.g. no text layer, AI provider unavailable). */
+    private String processingError;
+    @JsonProperty("isDefault")
     private boolean isDefault;
+    @JsonProperty("isArchived")
     private boolean isArchived;
     private Instant uploadedAt;
     private UUID uploadedBy;

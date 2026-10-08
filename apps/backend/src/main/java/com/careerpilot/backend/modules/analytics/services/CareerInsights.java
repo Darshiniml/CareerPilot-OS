@@ -63,21 +63,7 @@ public class CareerInsights {
             }
         }
 
-        // Fallback default recommendations if none generated
-        if (recommendations.isEmpty()) {
-            recommendations.add(Map.of(
-                    "type", "SKILL_DEMAND",
-                    "recommendation", "Improve SQL queries & query optimization.",
-                    "evidence", "Improve SQL because it is your largest technical interview gap.",
-                    "skill", "sql"
-            ));
-            recommendations.add(Map.of(
-                    "type", "SKILL_DEMAND",
-                    "recommendation", "Practice system design fundamentals.",
-                    "evidence", "Practice system design because senior backend roles consistently score low in this area.",
-                    "skill", "system-design"
-            ));
-        }
+        // No data, no recommendations: nothing is invented to fill the list.
 
         return recommendations;
     }

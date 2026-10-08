@@ -5,29 +5,48 @@ import com.careerpilot.backend.modules.agent.domain.AgentTask;
 import com.careerpilot.backend.modules.agent.domain.AgentTaskStatus;
 import com.careerpilot.shared.events.UserLoggedInEvent;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 @Slf4j
 public class UserSessionListener {
 
     private final JobDiscoveryAgent jobDiscoveryAgent;
+    private final boolean discoveryEnabled;
+    private final Duration minInterval;
+    private final AtomicReference<Instant> lastRefresh = new AtomicReference<>(Instant.EPOCH);
 
-    public UserSessionListener(JobDiscoveryAgent jobDiscoveryAgent) {
+    public UserSessionListener(JobDiscoveryAgent jobDiscoveryAgent,
+                               @Value("${careerpilot.discovery.enabled:true}") boolean discoveryEnabled,
+                               @Value("${careerpilot.discovery.login-refresh-min-interval-ms:1800000}") long minIntervalMs) {
         this.jobDiscoveryAgent = jobDiscoveryAgent;
+        this.discoveryEnabled = discoveryEnabled;
+        this.minInterval = Duration.ofMillis(minIntervalMs);
     }
 
     @Async
     @EventListener
     public void handleUserLoggedIn(UserLoggedInEvent event) {
-        log.info("[AUTO-DISCOVERY-LOGIN] User logged in: userId={}, email={}. Launching background job discovery.",
-                event.getUserId(), event.getEmail());
+        if (!discoveryEnabled) {
+            return;
+        }
+        Instant now = Instant.now();
+        Instant previous = lastRefresh.get();
+        if (now.isBefore(previous.plus(minInterval)) || !lastRefresh.compareAndSet(previous, now)) {
+            log.debug("[AUTO-DISCOVERY-LOGIN] Skipping refresh for userId={}: jobs were refreshed recently", event.getUserId());
+            return;
+        }
+        log.info("[AUTO-DISCOVERY-LOGIN] User logged in: userId={}. Launching background job discovery.",
+                event.getUserId());
 
         try {
             AgentContext context = AgentContext.builder()

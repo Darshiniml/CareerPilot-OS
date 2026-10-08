@@ -6,9 +6,9 @@ import com.careerpilot.backend.modules.application.domain.ApplicationTimelineEve
 import com.careerpilot.backend.modules.application.domain.TimelineEventOutcome;
 import com.careerpilot.backend.modules.application.domain.TimelineEventType;
 import com.careerpilot.backend.modules.application.domain.WorkflowState;
-import com.careerpilot.backend.modules.application.repositories.ApplicationHistoryRepository;
 import com.careerpilot.backend.modules.application.repositories.ApplicationRecordRepository;
 import com.careerpilot.backend.modules.application.repositories.ApplicationTimelineEventRepository;
+import com.careerpilot.backend.modules.application.services.ApplicationTrackingService;
 import com.careerpilot.backend.modules.communication.domain.CommunicationClassification;
 import com.careerpilot.backend.modules.communication.domain.CommunicationProcessingStatus;
 import com.careerpilot.backend.modules.communication.domain.HrCommunication;
@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Optional;
@@ -48,18 +50,19 @@ import java.util.UUID;
  *   <li>UNKNOWN → no event, no transition (no evidence to act on)</li>
  * </ul>
  *
- * <p>Transition rules over the canonical lifecycle ranks UNDER_REVIEW(1) &lt; ASSESSMENT(2) &lt;
- * INTERVIEW(3) &lt; OFFER(4):</p>
+ * <p>Transition rules. There is exactly one lifecycle authority:
+ * {@link ApplicationTrackingService#isTransitionAllowed} over {@code VALID_TRANSITIONS}. This engine
+ * keeps no transition table of its own; it only adds communication-specific protections:</p>
  * <ul>
- *   <li>Terminal states (OFFER, REJECTED, REJECTED_BY_COMPANY, WITHDRAWN, COMPLETED, ARCHIVED) are
- *       never moved by communication evidence; conflicting evidence is preserved as a timeline
- *       event with outcome {@code TERMINAL_STATE_PROTECTED}.</li>
- *   <li>REJECTED is a valid target from any non-terminal state (a company may reject at any stage).</li>
- *   <li>A ranked target is valid only if it moves strictly forward; states outside the ranked
- *       lifecycle (e.g. DISCOVERED … SUBMITTED_VERIFIED) accept any ranked target because HR
- *       evidence proves the external process is ahead of the local record.</li>
- *   <li>Anything else is rejected as {@code INVALID_TRANSITION_REJECTED}: no mutation, no fabricated
- *       success event, and the M22.3 classification stays intact.</li>
+ *   <li>Terminal states ({@link ApplicationTrackingService#TERMINAL_STATES}) and OFFER are never moved by
+ *       communication evidence; conflicting evidence is preserved with outcome
+ *       {@code TERMINAL_STATE_PROTECTED} (an offer is only accepted/declined by the candidate).</li>
+ *   <li>Out-of-order evidence: if a later-received communication has already changed the state, an
+ *       older communication cannot move it ({@code OUT_OF_ORDER_IGNORED}); the evidence is kept.</li>
+ *   <li>Transitions the lifecycle authority does not allow are recorded as
+ *       {@code INVALID_TRANSITION_REJECTED}: no mutation, no fabricated success event.</li>
+ *   <li>Allowed transitions are applied through {@link ApplicationTrackingService#transitionState} with
+ *       actor type COMMUNICATION and the source communication id (full provenance in history).</li>
  * </ul>
  *
  * <p>Low-confidence policy: a classification below {@link #MIN_CONFIDENCE_FOR_STATE_ACTION} (0.5)
@@ -81,14 +84,8 @@ public class ApplicationStateTransitionService {
 
     private static final Map<CommunicationClassification, WorkflowState> TARGET_STATES =
             new EnumMap<>(CommunicationClassification.class);
-    private static final Map<WorkflowState, Integer> LIFECYCLE_RANK = new EnumMap<>(WorkflowState.class);
-    private static final Set<WorkflowState> TERMINAL_STATES = Set.of(
-            WorkflowState.OFFER,
-            WorkflowState.REJECTED,
-            WorkflowState.REJECTED_BY_COMPANY,
-            WorkflowState.WITHDRAWN,
-            WorkflowState.COMPLETED,
-            WorkflowState.ARCHIVED);
+    /** States communication evidence may never move: lifecycle terminal states plus OFFER. */
+    private static final Set<WorkflowState> COMMUNICATION_PROTECTED_STATES;
 
     static {
         TARGET_STATES.put(CommunicationClassification.APPLICATION_UNDER_REVIEW, WorkflowState.UNDER_REVIEW);
@@ -97,16 +94,15 @@ public class ApplicationStateTransitionService {
         TARGET_STATES.put(CommunicationClassification.REJECTION, WorkflowState.REJECTED);
         TARGET_STATES.put(CommunicationClassification.OFFER, WorkflowState.OFFER);
 
-        LIFECYCLE_RANK.put(WorkflowState.UNDER_REVIEW, 1);
-        LIFECYCLE_RANK.put(WorkflowState.ASSESSMENT, 2);
-        LIFECYCLE_RANK.put(WorkflowState.INTERVIEW, 3);
-        LIFECYCLE_RANK.put(WorkflowState.OFFER, 4);
+        Set<WorkflowState> protectedStates = EnumSet.copyOf(ApplicationTrackingService.TERMINAL_STATES);
+        protectedStates.add(WorkflowState.OFFER);
+        COMMUNICATION_PROTECTED_STATES = Collections.unmodifiableSet(protectedStates);
     }
 
     private final HrCommunicationRepository communicationRepository;
     private final ApplicationRecordRepository applicationRepository;
-    private final ApplicationHistoryRepository historyRepository;
     private final ApplicationTimelineEventRepository timelineEventRepository;
+    private final ApplicationTrackingService trackingService;
 
     /**
      * Deterministic processing result. All values are server-derived; {@code applicationState} is
@@ -184,47 +180,46 @@ public class ApplicationStateTransitionService {
                     TimelineEventOutcome.ALREADY_IN_TARGET_STATE, current, null, false, now);
             return toOutcome(event, application.getWorkflowState());
         }
-        if (TERMINAL_STATES.contains(current)) {
+        if (COMMUNICATION_PROTECTED_STATES.contains(current)) {
             ApplicationTimelineEvent event = persistEvent(application, communication, eventType,
                     TimelineEventOutcome.TERMINAL_STATE_PROTECTED, current, null, false, now);
             return toOutcome(event, application.getWorkflowState());
         }
-        if (!isValidTransition(current, target)) {
+        if (isOlderThanAppliedEvidence(applicationId, communication)) {
+            ApplicationTimelineEvent event = persistEvent(application, communication, eventType,
+                    TimelineEventOutcome.OUT_OF_ORDER_IGNORED, current, null, false, now);
+            return toOutcome(event, application.getWorkflowState());
+        }
+        if (!ApplicationTrackingService.isTransitionAllowed(current, target)) {
             ApplicationTimelineEvent event = persistEvent(application, communication, eventType,
                     TimelineEventOutcome.INVALID_TRANSITION_REJECTED, current, null, false, now);
             return toOutcome(event, application.getWorkflowState());
         }
 
-        application.setWorkflowState(target);
-        application.setUpdatedAt(now);
-        applicationRepository.save(application);
-
-        historyRepository.save(ApplicationHistory.builder()
-                .id(UUID.randomUUID())
-                .applicationId(application.getApplicationId())
-                .fromState(current)
-                .toState(target)
-                .actorId(candidateId)
-                .reason("HR communication evidence: " + classification
-                        + " (communication " + communicationId + ", confidence " + confidence + ")")
-                .createdAt(now)
-                .build());
+        trackingService.transitionState(application.getApplicationId(), target, null,
+                ApplicationHistory.ACTOR_COMMUNICATION,
+                "HR communication evidence: " + classification
+                        + " (communication " + communicationId + ", confidence " + confidence + ")",
+                communicationId);
 
         ApplicationTimelineEvent event = persistEvent(application, communication, eventType,
                 TimelineEventOutcome.STATE_TRANSITIONED, current, target, true, now);
         return toOutcome(event, target);
     }
 
-    private boolean isValidTransition(WorkflowState current, WorkflowState target) {
-        if (target == WorkflowState.REJECTED) {
-            return true;
+    /**
+     * True when a communication received later than this one has already changed the application's
+     * state, i.e. this evidence was processed out of order and must not override newer evidence.
+     */
+    private boolean isOlderThanAppliedEvidence(UUID applicationId, HrCommunication communication) {
+        Instant receivedAt = communication.getReceivedAt();
+        if (receivedAt == null) {
+            return false;
         }
-        Integer currentRank = LIFECYCLE_RANK.get(current);
-        if (currentRank == null) {
-            return true;
-        }
-        Integer targetRank = LIFECYCLE_RANK.get(target);
-        return targetRank != null && targetRank > currentRank;
+        return timelineEventRepository
+                .findTopByApplicationIdAndStateChangedTrueOrderByEventTimestampDesc(applicationId)
+                .map(latest -> latest.getEventTimestamp() != null && latest.getEventTimestamp().isAfter(receivedAt))
+                .orElse(false);
     }
 
     private ApplicationTimelineEvent persistEvent(ApplicationRecord application,

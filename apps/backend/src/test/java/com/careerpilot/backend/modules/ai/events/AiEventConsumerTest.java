@@ -1,65 +1,86 @@
 package com.careerpilot.backend.modules.ai.events;
 
-import com.careerpilot.backend.modules.ai.task.domain.AiTask;
-import com.careerpilot.backend.modules.ai.task.domain.AiWorkflow;
-import com.careerpilot.backend.modules.ai.task.repositories.AiTaskRepository;
-import com.careerpilot.backend.modules.ai.task.repositories.AiWorkflowRepository;
-import com.careerpilot.backend.modules.ai.task.services.AiTaskDispatcher;
+import com.careerpilot.backend.modules.ai.knowledge.domain.AiDocument;
+import com.careerpilot.backend.modules.ai.knowledge.repositories.AiDocumentRepository;
+import com.careerpilot.backend.modules.ai.knowledge.services.KnowledgePipelineService;
+import com.careerpilot.backend.modules.ai.matching.MatchingCache;
+import com.careerpilot.backend.modules.resume.domain.ResumeVersion;
+import com.careerpilot.backend.modules.resume.repositories.ResumeVersionRepository;
+import com.careerpilot.shared.dto.ai.matching.MatchResultDto;
+import com.careerpilot.shared.events.ResumeDeletedEvent;
 import com.careerpilot.shared.events.ResumeUploadedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 class AiEventConsumerTest {
 
-    private AiWorkflowRepository workflowRepository;
-    private AiTaskRepository taskRepository;
-    private AiTaskDispatcher taskDispatcher;
-    
+    private ResumeVersionRepository versionRepository;
+    private AiDocumentRepository documentRepository;
+    private KnowledgePipelineService pipelineService;
+    private MatchingCache matchingCache;
     private AiEventConsumer eventConsumer;
 
     @BeforeEach
     void setUp() {
-        workflowRepository = Mockito.mock(AiWorkflowRepository.class);
-        taskRepository = Mockito.mock(AiTaskRepository.class);
-        taskDispatcher = Mockito.mock(AiTaskDispatcher.class);
-
-        eventConsumer = new AiEventConsumer(
-                workflowRepository,
-                taskRepository,
-                taskDispatcher
-        );
+        versionRepository = Mockito.mock(ResumeVersionRepository.class);
+        documentRepository = Mockito.mock(AiDocumentRepository.class);
+        pipelineService = Mockito.mock(KnowledgePipelineService.class);
+        matchingCache = new MatchingCache(null);
+        eventConsumer = new AiEventConsumer(versionRepository, documentRepository, pipelineService, matchingCache);
     }
 
     @Test
-    void testHandleResumeUploaded_PersistsWorkflowAndTaskAndDispatches() {
-        ResumeUploadedEvent event = ResumeUploadedEvent.builder()
-                .eventId(UUID.randomUUID())
-                .timestamp(Instant.now())
-                .userId(UUID.randomUUID())
-                .resumeId(UUID.randomUUID())
-                .fileName("cv.pdf")
-                .fileUrl("http://s3/cv.pdf")
-                .contentType("application/pdf")
-                .fileSize(1000)
-                .build();
+    void resumeUploadEvictsOnlyThatCandidatesCachedMatches() {
+        UUID candidate = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        matchingCache.put(MatchingCache.generateCacheKey(candidate, UUID.randomUUID()), new MatchResultDto());
+        matchingCache.put(MatchingCache.generateCacheKey(other, UUID.randomUUID()), new MatchResultDto());
 
-        eventConsumer.handleResumeUploaded(event);
+        eventConsumer.handleResumeUploaded(ResumeUploadedEvent.builder()
+                .eventId(UUID.randomUUID()).timestamp(Instant.now()).userId(candidate).resumeId(UUID.randomUUID()).build());
 
-        // Assert parent workflow saved
-        verify(workflowRepository, times(1)).save(any(AiWorkflow.class));
-        
-        // Assert child task saved
-        verify(taskRepository, times(1)).save(any(AiTask.class));
-        
-        // Assert task dispatched
-        verify(taskDispatcher, times(1)).dispatch(any(AiTask.class));
+        assertEquals(1, matchingCache.size());
+    }
+
+    @Test
+    void resumeDeletionRemovesOwnedVectorsAndArchivesDocuments() {
+        UUID owner = UUID.randomUUID();
+        UUID resumeId = UUID.randomUUID();
+        ResumeVersion version = ResumeVersion.builder().id(UUID.randomUUID()).versionNumber(1).build();
+        AiDocument doc = AiDocument.builder().id(version.getId()).ownerId(owner).documentType("RESUME").title("cv").build();
+        when(versionRepository.findByResumeIdOrderByVersionNumberDesc(resumeId)).thenReturn(List.of(version));
+        when(documentRepository.findById(version.getId())).thenReturn(Optional.of(doc));
+
+        eventConsumer.handleResumeDeleted(ResumeDeletedEvent.builder()
+                .eventId(UUID.randomUUID()).timestamp(Instant.now()).userId(owner).resumeId(resumeId).build());
+
+        verify(pipelineService).removeFromIndex(doc);
+        verify(documentRepository).save(any(AiDocument.class));
+        assertEquals("ARCHIVED", doc.getStatus());
+    }
+
+    @Test
+    void resumeDeletionNeverTouchesAnotherUsersDocument() {
+        UUID resumeId = UUID.randomUUID();
+        ResumeVersion version = ResumeVersion.builder().id(UUID.randomUUID()).versionNumber(1).build();
+        AiDocument foreign = AiDocument.builder().id(version.getId()).ownerId(UUID.randomUUID()).documentType("RESUME").title("x").build();
+        when(versionRepository.findByResumeIdOrderByVersionNumberDesc(resumeId)).thenReturn(List.of(version));
+        when(documentRepository.findById(version.getId())).thenReturn(Optional.of(foreign));
+
+        eventConsumer.handleResumeDeleted(ResumeDeletedEvent.builder()
+                .eventId(UUID.randomUUID()).timestamp(Instant.now()).userId(UUID.randomUUID()).resumeId(resumeId).build());
+
+        verifyNoInteractions(pipelineService);
+        verify(documentRepository, never()).save(any());
     }
 }

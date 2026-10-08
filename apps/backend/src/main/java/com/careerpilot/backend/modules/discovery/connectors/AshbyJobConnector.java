@@ -131,29 +131,37 @@ public class AshbyJobConnector implements Connector {
 
     private DiscoveredJob parseAshbyJob(String company, JsonNode node) {
         try {
-            String externalId = "ashby-" + company + "-" + node.get("id").asText();
-            String title = node.has("title") ? node.get("title").asText() : "Software Developer";
-            String applyUrl = node.has("jobUrl") ? node.get("jobUrl").asText() : "https://jobs.ashbyhq.com/" + company;
-            String location = node.has("locationName") ? node.get("locationName").asText() : "Remote";
-            String companyName = company.substring(0, 1).toUpperCase() + company.substring(1);
-
+            String id = ConnectorParsing.text(node, "id");
+            String title = ConnectorParsing.text(node, "title");
+            String description = ConnectorParsing.text(node, "descriptionPlain");
+            if (description == null) {
+                description = ConnectorParsing.plainText(ConnectorParsing.text(node, "descriptionHtml"));
+            }
+            if (id == null || title == null || description == null) {
+                return null; // Ashby returns descriptions only with includeCompensation/description; skip otherwise
+            }
+            String location = ConnectorParsing.text(node, "location");
+            if (location == null) location = ConnectorParsing.text(node, "locationName");
+            String workMode = node.hasNonNull("isRemote") && node.get("isRemote").asBoolean() ? "REMOTE"
+                    : ConnectorParsing.workMode(ConnectorParsing.text(node, "workplaceType"), location);
+            String companyName = ConnectorParsing.capitalize(company);
             return DiscoveredJob.builder()
-                    .externalId(externalId)
+                    .externalId("ashby-" + company + "-" + id)
                     .connectorId(getConnectorId())
                     .source("Ashby (" + companyName + ")")
-                    .sourceUrl(applyUrl)
+                    .sourceUrl(ConnectorParsing.text(node, "jobUrl"))
                     .title(title)
                     .company(companyName)
                     .location(location)
-                    .employmentType("FULL_TIME")
-                    .workMode(location.toLowerCase().contains("remote") ? "REMOTE" : "HYBRID")
-                    .rawContent(title + " role at " + companyName + " in " + location)
-                    .postedDate(LocalDateTime.now(ZoneOffset.UTC))
+                    .employmentType(ConnectorParsing.employmentType(ConnectorParsing.text(node, "employmentType")))
+                    .workMode(workMode)
+                    .rawContent(description.length() > ConnectorParsing.MAX_CONTENT ? description.substring(0, ConnectorParsing.MAX_CONTENT) : description)
+                    .postedDate(ConnectorParsing.isoDateTime(ConnectorParsing.text(node, "publishedAt")))
                     .discoveredAt(LocalDateTime.now(ZoneOffset.UTC))
                     .normalizedTitle(title.trim())
-                    .normalizedCompany(companyName.trim())
-                    .skills(List.of("Software Engineering", "Fullstack", "Frontend"))
-                    .metadata(Map.of("company", company, "externalId", node.get("id").asText()))
+                    .normalizedCompany(companyName)
+                    .skills(List.of())
+                    .metadata(Map.of("company", company, "externalId", id))
                     .build();
         } catch (Exception e) {
             return null;

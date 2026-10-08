@@ -1,6 +1,6 @@
 package com.careerpilot.backend.modules.application.services;
 
-import com.careerpilot.backend.modules.ai.matching.MatchingEngine;
+import com.careerpilot.backend.modules.ai.matching.MatchService;
 import com.careerpilot.backend.modules.application.domain.ApplicationDecision;
 import com.careerpilot.backend.modules.application.domain.ApplicationRecord;
 import com.careerpilot.backend.modules.application.domain.ApplicationSubmissionCapability;
@@ -23,7 +23,7 @@ import java.util.*;
 @Slf4j
 public class ApplicationDecisionService {
 
-    private final MatchingEngine matchingEngine;
+    private final MatchService matchService;
     private final ResumeSelectionService resumeSelectionService;
     private final SubmissionPreflightService preflightService;
     private final ApplicationSubmissionRegistry submissionRegistry;
@@ -33,7 +33,7 @@ public class ApplicationDecisionService {
     private final ObjectMapper objectMapper;
 
     public ApplicationDecisionService(
-            MatchingEngine matchingEngine,
+            MatchService matchService,
             ResumeSelectionService resumeSelectionService,
             SubmissionPreflightService preflightService,
             ApplicationSubmissionRegistry submissionRegistry,
@@ -41,7 +41,7 @@ public class ApplicationDecisionService {
             DiscoveryJobRepository jobRepository,
             ApplicationDecisionRepository decisionRepository,
             ObjectMapper objectMapper) {
-        this.matchingEngine = matchingEngine;
+        this.matchService = matchService;
         this.resumeSelectionService = resumeSelectionService;
         this.preflightService = preflightService;
         this.submissionRegistry = submissionRegistry;
@@ -60,54 +60,31 @@ public class ApplicationDecisionService {
         UUID jobId = application.getJobId();
         UUID companyId = application.getCompanyId();
 
-        DiscoveryJob job = jobRepository.findById(jobId).orElse(null);
+        // 1. Matching evaluation from the candidate's real processed resume (never empty data)
+        MatchResultDto matchResult = matchService.matchIfPossible(candidateId, jobId).orElse(null);
 
-        Map<String, Object> jobKnowledge = new HashMap<>();
-        if (job != null) {
-            jobKnowledge.put("title", job.getTitle());
-            jobKnowledge.put("company", job.getCompany());
-            jobKnowledge.put("locations", List.of(job.getLocation() != null ? job.getLocation() : ""));
-            jobKnowledge.put("rawContent", job.getRawContent() != null ? job.getRawContent() : "");
-        }
-
-        // 1. Matching Evaluation from MatchingEngine
-        MatchResultDto matchResult = matchingEngine.matchCandidateToJob(
-                candidateId,
-                jobId,
-                companyId,
-                candidateId,
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                jobKnowledge,
-                Map.of(),
-                Map.of()
-        );
-
-        double score = matchResult != null ? matchResult.getOverallScore() : 0.0;
         String recommendation;
-        if (score >= 75.0) {
-            recommendation = "RECOMMENDED_TO_APPLY";
-        } else if (score >= 50.0) {
-            recommendation = "APPLY_WITH_CAUTION";
-        } else {
-            recommendation = "NOT_RECOMMENDED";
-        }
-
-        // 2. Explainable Rationale
-        String rationale = String.format("Overall match score is %.1f%% based on skill alignment (%.1f%%) and experience profile (%.1f%%).",
-                score,
-                matchResult != null && matchResult.getIndividualScores() != null ? matchResult.getIndividualScores().getOrDefault("SKILL_ALIGNMENT", score) : score,
-                matchResult != null && matchResult.getIndividualScores() != null ? matchResult.getIndividualScores().getOrDefault("EXPERIENCE_ALIGNMENT", score) : score);
-
-        // 3. Strengths and Gaps
-        List<String> strengths = matchResult != null && matchResult.getStrengths() != null ? matchResult.getStrengths() : List.of("Role alignment");
+        String rationale;
+        List<String> strengths = new ArrayList<>();
         List<String> criticalGaps = new ArrayList<>();
-        if (matchResult != null && matchResult.getCriticalGaps() != null) {
-            matchResult.getCriticalGaps().forEach(g -> criticalGaps.add(g != null ? g.toString() : "Skill gap"));
+        if (matchResult == null) {
+            recommendation = "INSUFFICIENT_DATA";
+            rationale = "No processed resume is available yet, so this job cannot be evaluated. "
+                    + "Upload a resume and wait for AI processing to finish.";
+        } else {
+            double score = matchResult.getOverallScore();
+            recommendation = score >= 75.0 ? "RECOMMENDED_TO_APPLY" : score >= 50.0 ? "APPLY_WITH_CAUTION" : "NOT_RECOMMENDED";
+            Map<String, Double> factors = matchResult.getIndividualScores() != null ? matchResult.getIndividualScores() : Map.of();
+            rationale = String.format("Overall match score is %.1f%%. Skills: %s. Experience: %s.%s",
+                    score, factorText(factors, "skillMatch"), factorText(factors, "experienceMatch"),
+                    Boolean.FALSE.equals(matchResult.getJobAnalyzed())
+                            ? " The job has not been AI-analysed yet, so requirement-based factors are not assessed." : "");
+            if (matchResult.getStrengths() != null) {
+                strengths.addAll(matchResult.getStrengths());
+            }
+            if (matchResult.getCriticalGaps() != null) {
+                matchResult.getCriticalGaps().forEach(g -> { if (g != null) criticalGaps.add(g.toString()); });
+            }
         }
 
         // 4. Resume Selection
@@ -117,7 +94,7 @@ public class ApplicationDecisionService {
         SubmissionPreflightService.PreflightResult preflightResult = preflightService.evaluatePreflight(application, candidateId);
 
         // 6. Capability Lookup
-        String connectorId = application.getConnectorId() != null ? application.getConnectorId() : "remotive";
+        String connectorId = application.getConnectorId();
         ApplicationSubmissionCapability capability = submissionRegistry.getSubmissionCapability(connectorId);
 
         // 7. Persist Decision Record
@@ -132,12 +109,17 @@ public class ApplicationDecisionService {
         decision.setCriticalGapsJson(toJson(criticalGaps));
         decision.setRecommendedResumeId(resumeResult.getResumeId());
         decision.setRecommendedResumeTitle(resumeResult.getTitle());
-        decision.setCompanyHighlightsJson(toJson(List.of("Tech stack & culture alignment evaluated from company insights")));
+        decision.setCompanyHighlightsJson(toJson(List.of()));
         decision.setPreflightResultJson(toJson(preflightResult));
         decision.setSubmissionCapabilityJson(toJson(capability));
         decision.setEvaluatedAt(Instant.now());
 
         return decisionRepository.save(decision);
+    }
+
+    private static String factorText(Map<String, Double> factors, String name) {
+        Double value = factors.get(name);
+        return value == null ? "not assessed (missing data)" : String.format("%.0f%%", value);
     }
 
     public Optional<ApplicationDecision> getDecision(UUID applicationId) {

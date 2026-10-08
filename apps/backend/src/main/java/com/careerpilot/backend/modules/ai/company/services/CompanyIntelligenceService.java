@@ -1,5 +1,6 @@
 package com.careerpilot.backend.modules.ai.company.services;
 
+import com.careerpilot.backend.modules.ai.web.SafeWebPageFetcher;
 import com.careerpilot.backend.modules.ai.company.domain.CompanyIntelligenceCache;
 import com.careerpilot.backend.modules.ai.company.repositories.CompanyIntelligenceCacheRepository;
 import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
@@ -12,7 +13,6 @@ import com.careerpilot.shared.events.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -29,13 +29,16 @@ public class CompanyIntelligenceService {
     private final KnowledgePipelineService pipelineService;
     private final AiGatewayClient gatewayClient;
     private final ApplicationEventPublisher eventPublisher;
+    private final SafeWebPageFetcher webPageFetcher;
 
     public CompanyIntelligenceService(
             AiDocumentRepository documentRepository,
             CompanyIntelligenceCacheRepository cacheRepository,
             KnowledgePipelineService pipelineService,
             AiGatewayClient gatewayClient,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            SafeWebPageFetcher webPageFetcher) {
+        this.webPageFetcher = webPageFetcher;
         this.documentRepository = documentRepository;
         this.cacheRepository = cacheRepository;
         this.pipelineService = pipelineService;
@@ -43,12 +46,15 @@ public class CompanyIntelligenceService {
         this.eventPublisher = eventPublisher;
     }
 
-    @Transactional
+    // Not transactional: model calls must not pin a pooled DB connection (see JobIntelligenceService).
     public AiDocument processCompany(UUID documentId, String content, String url) {
         AiDocument document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new IllegalArgumentException("Company document not found"));
 
-        String textContent = content != null ? content : (document.getContent() != null ? document.getContent() : "Sample company data");
+        String textContent = content != null ? content : document.getContent();
+        if (textContent == null || textContent.isBlank()) {
+            throw new IllegalArgumentException("Company text is required");
+        }
         String checksum = calculateChecksum(textContent.getBytes(StandardCharsets.UTF_8));
         document.setChecksum(checksum);
         document.setSource(url);
@@ -155,11 +161,14 @@ public class CompanyIntelligenceService {
         return processed;
     }
 
-    @Transactional
     public AiDocument processCompanyUrl(UUID ownerId, String url) {
-        // Simulate source content acquisition
-        String simulatedContent = acquireSimulatedContent(url);
-        String title = extractTitleFromUrl(url);
+        // Fetch the real page (SSRF-protected); never substitute canned company text.
+        SafeWebPageFetcher.FetchedPage page = webPageFetcher.fetch(url);
+        if (page.text() == null || page.text().split("\\s+").length < 30) {
+            throw new IllegalArgumentException("The page does not contain enough readable text to analyse");
+        }
+        String pageContent = page.text().length() > 24000 ? page.text().substring(0, 24000) : page.text();
+        String title = extractTitleFromUrl(page.finalUrl());
 
         AiDocument document = AiDocument.builder()
                 .id(UUID.randomUUID())
@@ -168,7 +177,7 @@ public class CompanyIntelligenceService {
                 .ownerId(ownerId)
                 .title(title)
                 .source(url)
-                .content(simulatedContent)
+                .content(pageContent)
                 .version(1)
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -183,7 +192,7 @@ public class CompanyIntelligenceService {
                 .url(url)
                 .build());
 
-        return processCompany(document.getId(), simulatedContent, url);
+        return processCompany(document.getId(), pageContent, url);
     }
 
     private void publishEventChain(AiDocument doc) {
@@ -253,17 +262,6 @@ public class CompanyIntelligenceService {
             return hexString.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 algorithm not available", e);
-        }
-    }
-
-    private String acquireSimulatedContent(String url) {
-        String cleanUrl = url.toLowerCase();
-        if (cleanUrl.contains("google")) {
-            return "About Google: Search engine and cloud enterprise. We use Java, Go, and Python. We specialize in AI/ML.";
-        } else if (cleanUrl.contains("netflix")) {
-            return "About Netflix: Streaming service. Headquarters in Los Gatos, California. Tech stack consists of Java, React, and AWS.";
-        } else {
-            return "Company Website: Modern tech company focusing on backend software. Tech stack includes AWS, Docker, Java, and Spring Boot.";
         }
     }
 

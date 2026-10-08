@@ -15,6 +15,8 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CandidateProfile {
+    /** The authenticated candidate this profile belongs to (set by the engine, never by clients). */
+    private java.util.UUID candidateId;
     @Builder.Default
     private Set<String> skills = new HashSet<>();
     @Builder.Default

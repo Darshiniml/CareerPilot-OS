@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import java.net.URI;
 
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "storage.type", havingValue = "s3", matchIfMissing = true)
 public class MinioConfig {
 
     @Value("${storage.s3.endpoint}")

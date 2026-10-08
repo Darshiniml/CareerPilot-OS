@@ -1,6 +1,7 @@
 spring:
   datasource:
-    url: jdbc:h2:file:./data/careerpilottestdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    # In-memory per JVM: no state leaks between test runs.
+    url: jdbc:h2:mem:careerpilottestdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     username: sa
     password: password
     driver-class-name: org.h2.Driver
@@ -10,12 +11,26 @@ spring:
       ddl-auto: update
   flyway:
     enabled: false
-  redis:
-    host: localhost
-    port: 6379
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+security:
+  jwt:
+    secret-key: test-only-jwt-secret-key-not-for-production-0123456789
 
 storage:
   s3:
     access-key: test
     secret-key: test
     bucket-name: careerpilot-resumes
+
+careerpilot:
+  ai-service:
+    token: test-service-token
+  discovery:
+    # Tests never call real job boards.
+    enabled: false
+    vector-index:
+      enabled: false

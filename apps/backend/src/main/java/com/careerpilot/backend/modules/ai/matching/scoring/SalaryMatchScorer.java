@@ -23,18 +23,18 @@ public class SalaryMatchScorer implements MatchScorer {
         Integer candidateSalaryMax = candidate.getSalaryMax();
 
         if (jobSalaryMin == null && jobSalaryMax == null) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (candidateSalaryMin == null && candidateSalaryMax == null) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         double jobRangeMid = computeJobRangeMid(jobSalaryMin, jobSalaryMax);
         double candidateRangeMid = computeCandidateRangeMid(candidateSalaryMin, candidateSalaryMax);
 
         if (jobRangeMid == 0 || candidateRangeMid == 0) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         double ratio = candidateRangeMid / jobRangeMid;

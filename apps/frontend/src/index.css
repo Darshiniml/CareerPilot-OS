@@ -1,159 +1,148 @@
 @import "tailwindcss";
 
-@theme {
-  /* Colors */
-  --color-jet-black: #090d16;
-  --color-paper-white: #ffffff;
-  --color-mist-gray: #f8fafc;
-  --color-charcoal: #1e293b;
-  --color-iron-gray: #64748b;
-  --color-ash-gray: #94a3b8;
-  --color-slate: #475569;
-  --color-graphite: #334155;
-  --color-faded-teal: #38bdf8;
+/* Dark mode is driven by [data-theme] on <html> (set from the theme store). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-  /* Typography */
-  --font-sans-serif: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-heading: 'Outfit', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+/* ------------------------------------------------------------------ */
+/* Design tokens. Components use the semantic Tailwind colours below  */
+/* (bg-surface, text-fg, border-border, ...) so both themes stay      */
+/* readable. Never hardcode light text on light or dark on dark.      */
+/* ------------------------------------------------------------------ */
+:root {
+  color-scheme: light;
+  --cp-bg: #f5f7fb;
+  --cp-surface: #ffffff;
+  --cp-surface-2: #f0f3f9;
+  --cp-surface-3: #e6ebf3;
+  --cp-border: #dbe2ec;
+  --cp-border-strong: #c3ccda;
+  --cp-fg: #0f172a;
+  --cp-fg-muted: #475569;
+  --cp-fg-subtle: #64748b;
+  --cp-primary: #4f46e5;
+  --cp-primary-hover: #4338ca;
+  --cp-primary-fg: #ffffff;
+  --cp-primary-soft: #eef0ff;
+  --cp-primary-soft-fg: #3730a3;
+  --cp-success: #15803d;
+  --cp-success-soft: #e8f7ee;
+  --cp-warning: #b45309;
+  --cp-warning-soft: #fef5e6;
+  --cp-danger: #b91c1c;
+  --cp-danger-soft: #fdecec;
+  --cp-info: #0369a1;
+  --cp-info-soft: #e7f3fb;
+  --cp-ring: #6366f1;
+  --cp-overlay: rgb(15 23 42 / 0.45);
+  --cp-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 16px rgb(15 23 42 / 0.06);
+}
 
-  /* Typography — Scale */
-  --text-caption: 12px;
-  --leading-caption: 1.67;
-  --text-body-sm: 14px;
-  --leading-body-sm: 1.5;
-  --text-body: 16px;
-  --leading-body: 1.43;
-  --text-subheading: 18px;
-  --leading-subheading: 1.33;
-  --text-heading-sm: 24px;
-  --leading-heading-sm: 1.33;
-  --text-heading: 36px;
-  --leading-heading: 1.22;
-  --text-display: 52px;
-  --leading-display: 1.23;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #0b1020;
+  --cp-surface: #121a2e;
+  --cp-surface-2: #182238;
+  --cp-surface-3: #212d47;
+  --cp-border: #26324c;
+  --cp-border-strong: #34426180;
+  --cp-fg: #e8edf7;
+  --cp-fg-muted: #a8b3c9;
+  --cp-fg-subtle: #8290aa;
+  --cp-primary: #7c83ff;
+  --cp-primary-hover: #959bff;
+  --cp-primary-fg: #0b1020;
+  --cp-primary-soft: #232a55;
+  --cp-primary-soft-fg: #c7cbff;
+  --cp-success: #4ade80;
+  --cp-success-soft: #13301f;
+  --cp-warning: #fbbf24;
+  --cp-warning-soft: #33270c;
+  --cp-danger: #f87171;
+  --cp-danger-soft: #3a1618;
+  --cp-info: #38bdf8;
+  --cp-info-soft: #0f2a3d;
+  --cp-ring: #8b91ff;
+  --cp-overlay: rgb(2 6 18 / 0.65);
+  --cp-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.25);
+}
 
-  /* Border Radius */
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 20px;
-  --radius-full: 9999px;
+@theme inline {
+  --color-bg: var(--cp-bg);
+  --color-surface: var(--cp-surface);
+  --color-surface-2: var(--cp-surface-2);
+  --color-surface-3: var(--cp-surface-3);
+  --color-border: var(--cp-border);
+  --color-border-strong: var(--cp-border-strong);
+  --color-fg: var(--cp-fg);
+  --color-fg-muted: var(--cp-fg-muted);
+  --color-fg-subtle: var(--cp-fg-subtle);
+  --color-primary: var(--cp-primary);
+  --color-primary-hover: var(--cp-primary-hover);
+  --color-primary-fg: var(--cp-primary-fg);
+  --color-primary-soft: var(--cp-primary-soft);
+  --color-primary-soft-fg: var(--cp-primary-soft-fg);
+  --color-success: var(--cp-success);
+  --color-success-soft: var(--cp-success-soft);
+  --color-warning: var(--cp-warning);
+  --color-warning-soft: var(--cp-warning-soft);
+  --color-danger: var(--cp-danger);
+  --color-danger-soft: var(--cp-danger-soft);
+  --color-info: var(--cp-info);
+  --color-info-soft: var(--cp-info-soft);
+  --color-ring: var(--cp-ring);
+  --color-overlay: var(--cp-overlay);
+  --shadow-card: var(--cp-shadow);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body {
+  background-color: var(--cp-bg);
+  color: var(--cp-fg);
 }
 
 body {
-  background-color: #0b0f19;
-  color: #f8fafc;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   margin: 0;
-  padding: 0;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+*:focus-visible {
+  outline: 2px solid var(--cp-ring);
+  outline-offset: 2px;
 }
-::-webkit-scrollbar-track {
-  background: #0f172a;
+
+::selection {
+  background: var(--cp-primary-soft);
+  color: var(--cp-primary-soft-fg);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: var(--cp-border);
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Structural Shell Layout */
-.app-shell {
-  min-height: 100vh;
-  display: flex;
-  background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #0f172a 45%, #0b0f19 100%);
-  background-attachment: fixed;
+@keyframes cp-shimmer {
+  0% { opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+.cp-skeleton {
+  animation: cp-shimmer 1.4s ease-in-out infinite;
 }
 
-.sidebar {
-  width: 260px !important;
-  min-width: 260px !important;
-  min-height: 100vh;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(16px);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  position: sticky;
-  top: 0;
-}
-
-.main-area {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.top-header {
-  min-height: 70px;
-  height: 70px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  padding-left: 32px;
-  padding-right: 32px;
-  position: sticky;
-  top: 0;
-  z-index: 40;
-}
-
-.page-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 32px;
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-}
-
-/* Glassmorphism & UI Utilities */
-.glass-card {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-}
-
-.glass-card-hover {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.glass-card-hover:hover {
-  background: rgba(30, 41, 59, 0.75);
-  border-color: rgba(99, 102, 241, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 20px 40px -15px rgba(99, 102, 241, 0.2);
-}
-
-.gradient-text {
-  background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.gradient-border {
-  position: relative;
-}
-.gradient-border::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(129, 140, 248, 0.4), rgba(192, 132, 252, 0.2), rgba(244, 114, 182, 0.4));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

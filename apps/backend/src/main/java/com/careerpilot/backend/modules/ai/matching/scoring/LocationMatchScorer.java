@@ -25,7 +25,7 @@ public class LocationMatchScorer implements MatchScorer {
         String jobWorkMode = job.getWorkMode();
 
         if (jobLocations == null || jobLocations.isEmpty()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (isRemoteJob(jobWorkMode)) {
@@ -33,7 +33,7 @@ public class LocationMatchScorer implements MatchScorer {
         }
 
         if (preferredLocations == null || preferredLocations.isEmpty()) {
-            return 50.0;
+            return NOT_ASSESSABLE;
         }
 
         double maxScore = 0.0;

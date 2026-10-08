@@ -24,7 +24,7 @@ public class EducationMatchScorer implements MatchScorer {
         List<String> jobRequirements = job.getEducationRequirements();
 
         if (jobRequirements == null || jobRequirements.isEmpty()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         if (candidateEducation == null || candidateEducation.isEmpty()) {

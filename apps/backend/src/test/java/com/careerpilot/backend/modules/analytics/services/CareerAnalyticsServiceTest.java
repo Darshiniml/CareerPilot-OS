@@ -25,9 +25,7 @@ public class CareerAnalyticsServiceTest {
     private CareerProgressAnalyzer careerProgressAnalyzer;
     private ApplicationAnalyzer applicationAnalyzer;
     private InterviewAnalyzer interviewAnalyzer;
-    private LearningPathEngine learningPathEngine;
     private CareerInsights careerInsights;
-    private CareerPredictionEngine predictionEngine;
 
     private CareerAnalyticsRepository analyticsRepository;
     private SkillGapRepository skillGapRepository;
@@ -50,9 +48,7 @@ public class CareerAnalyticsServiceTest {
         careerProgressAnalyzer = mock(CareerProgressAnalyzer.class);
         applicationAnalyzer = mock(ApplicationAnalyzer.class);
         interviewAnalyzer = mock(InterviewAnalyzer.class);
-        learningPathEngine = mock(LearningPathEngine.class);
         careerInsights = mock(CareerInsights.class);
-        predictionEngine = mock(CareerPredictionEngine.class);
 
         analyticsRepository = mock(CareerAnalyticsRepository.class);
         skillGapRepository = mock(SkillGapRepository.class);
@@ -65,9 +61,10 @@ public class CareerAnalyticsServiceTest {
         cacheService = mock(AnalyticsCacheService.class);
 
         analyticsService = new CareerAnalyticsService(
+                mock(com.careerpilot.backend.modules.analytics.repositories.LearningPathRepository.class),
                 dataCollector, metricCalculator, trendAnalyzer, skillDemandAnalyzer,
                 careerProgressAnalyzer, applicationAnalyzer, interviewAnalyzer,
-                learningPathEngine, careerInsights, predictionEngine,
+                careerInsights,
                 analyticsRepository, skillGapRepository, learningProgressRepository,
                 careerGoalRepository, goalProgressRepository, metricRepository,
                 eventPublisher, cacheService

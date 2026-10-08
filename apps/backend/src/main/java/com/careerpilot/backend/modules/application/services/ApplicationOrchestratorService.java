@@ -28,7 +28,6 @@ public class ApplicationOrchestratorService {
     private final PlatformNotificationRepository notificationRepository;
     private final ApprovalPolicyRepository policyRepository;
     private final AgentPolicyRepository agentPolicyRepository;
-    private final ApplicationWorkflowEngine workflowEngine;
     private final EligibilityEngine eligibilityEngine;
     private final ResumeSelectionEngine resumeSelectionEngine;
     private final ApprovalPolicyEngine approvalPolicyEngine;
@@ -38,15 +37,13 @@ public class ApplicationOrchestratorService {
 
     @Transactional
     public ApplicationRecord createApplication(UUID candidateId, UUID companyId, UUID jobId, String connectorId, Map<String, Object> metadata) {
-        if (applicationRepository.existsByCandidateIdAndJobId(candidateId, jobId)) {
-            log.info("[APPLICATION] Candidate {} has already applied for jobId={}. Marking ALREADY_APPLIED.", candidateId, jobId);
-            Optional<ApplicationRecord> existing = applicationRepository.findByCandidateIdAndJobId(candidateId, jobId);
-            if (existing.isPresent()) {
-                ApplicationRecord record = existing.get();
-                record.setWorkflowState(WorkflowState.ALREADY_APPLIED);
-                return applicationRepository.save(record);
-            }
-            throw new IllegalArgumentException("Duplicate application already exists");
+        Optional<ApplicationRecord> existing = applicationRepository.findByCandidateIdAndJobId(candidateId, jobId);
+        if (existing.isPresent()) {
+            // Idempotent: the candidate already tracks this job. Return the existing application
+            // unchanged; overwriting its state here would bypass the lifecycle authority and could
+            // erase real progress (e.g. INTERVIEW).
+            log.info("[APPLICATION] Candidate {} already has an application for jobId={}; returning it unchanged.", candidateId, jobId);
+            return existing.get();
         }
 
         Instant now = Instant.now();
@@ -140,6 +137,7 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord approve(UUID applicationId, UUID actorId, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
+        requireTransition(previousState, WorkflowState.APPROVED);
         application.setWorkflowState(WorkflowState.APPROVED);
         application.setUpdatedAt(Instant.now());
         recordHistory(application, previousState, WorkflowState.APPROVED, "Approved by user");
@@ -155,6 +153,7 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord reject(UUID applicationId, UUID actorId, String reason, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
+        requireTransition(previousState, WorkflowState.REJECTED);
         application.setWorkflowState(WorkflowState.REJECTED);
         application.setUpdatedAt(Instant.now());
         recordHistory(application, previousState, WorkflowState.REJECTED, reason);
@@ -170,6 +169,7 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord submit(UUID applicationId, UUID actorId, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
+        requireTransition(previousState, WorkflowState.SUBMISSION_IN_PROGRESS);
         application.setWorkflowState(WorkflowState.SUBMISSION_IN_PROGRESS);
         application.setUpdatedAt(Instant.now());
         recordHistory(application, previousState, WorkflowState.SUBMISSION_IN_PROGRESS, "Submission execution started");
@@ -219,6 +219,7 @@ public class ApplicationOrchestratorService {
     public ApplicationRecord retry(UUID applicationId, UUID actorId, String ipAddress) {
         ApplicationRecord application = applicationRepository.findById(applicationId).orElseThrow(() -> new IllegalArgumentException("Application not found"));
         WorkflowState previousState = application.getWorkflowState();
+        requireTransition(previousState, WorkflowState.RETRYING);
         int nextAttempt = application.getRetryCount() + 1;
         application.setRetryCount(nextAttempt);
         application.setWorkflowState(WorkflowState.RETRYING);
@@ -241,6 +242,13 @@ public class ApplicationOrchestratorService {
         }
         applicationRepository.save(application);
         return application;
+    }
+
+    /** User actions go through the single lifecycle authority; invalid actions are a 409, not a silent overwrite. */
+    private static void requireTransition(WorkflowState from, WorkflowState to) {
+        if (!ApplicationTrackingService.isTransitionAllowed(from, to)) {
+            throw new IllegalStateException("Cannot move application from " + from + " to " + to);
+        }
     }
 
     @Transactional(readOnly = true)

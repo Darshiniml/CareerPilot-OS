@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -57,8 +59,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
+        } catch (DataAccessException | TransactionException e) {
+            // The token may be fine; the user lookup failed. Report an outage, not "please log in".
+            log.error("Cannot authenticate request: database unavailable: {}", e.getMessage());
+            response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"status\":503,\"error\":\"SERVICE_UNAVAILABLE\",\"code\":\"DATABASE_UNAVAILABLE\","
+                    + "\"message\":\"The service is temporarily unavailable. Please retry shortly.\"}");
+            return;
         } catch (Exception e) {
-            log.error("Cannot set user authentication: {}", e.getMessage());
+            log.warn("Cannot set user authentication: {}", e.getMessage());
         }
 
         filterChain.doFilter(request, response);

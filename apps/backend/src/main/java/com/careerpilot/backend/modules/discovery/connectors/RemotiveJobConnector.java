@@ -146,43 +146,37 @@ public class RemotiveJobConnector implements Connector {
 
     private DiscoveredJob parseRemotiveJob(JsonNode node) {
         try {
-            String idStr = node.has("id") ? node.get("id").asText() : UUID.randomUUID().toString();
-            String externalId = "remotive-" + idStr;
-            String title = node.has("title") ? node.get("title").asText() : "Remote Software Engineer";
-            String company = node.has("company_name") ? node.get("company_name").asText() : "Tech Enterprise";
-            String applyUrl = node.has("url") ? node.get("url").asText() : "https://remotive.com";
-            String location = node.has("candidate_required_location") ? node.get("candidate_required_location").asText() : "Worldwide Remote";
-            String description = node.has("description") ? node.get("description").asText() : title + " at " + company;
-
-            String cleanContent = description.replaceAll("<[^>]*>", " ");
-
+            String id = ConnectorParsing.text(node, "id");
+            String title = ConnectorParsing.text(node, "title");
+            String company = ConnectorParsing.text(node, "company_name");
+            String description = ConnectorParsing.plainText(ConnectorParsing.text(node, "description"));
+            if (id == null || title == null || company == null || description == null) {
+                return null;
+            }
             List<String> tags = new ArrayList<>();
             if (node.has("tags") && node.get("tags").isArray()) {
                 for (JsonNode t : node.get("tags")) {
                     tags.add(t.asText());
                 }
             }
-            if (tags.isEmpty()) {
-                tags.addAll(List.of("Java", "Backend", "React", "Python"));
-            }
-
             return DiscoveredJob.builder()
-                    .externalId(externalId)
+                    .externalId("remotive-" + id)
                     .connectorId(getConnectorId())
                     .source("Remotive Remote Jobs")
-                    .sourceUrl(applyUrl)
+                    .sourceUrl(ConnectorParsing.text(node, "url"))
                     .title(title)
                     .company(company)
-                    .location(location)
-                    .employmentType("FULL_TIME")
-                    .workMode("REMOTE")
-                    .rawContent(cleanContent.length() > 3000 ? cleanContent.substring(0, 3000) : cleanContent)
-                    .postedDate(LocalDateTime.now(ZoneOffset.UTC))
+                    .location(ConnectorParsing.text(node, "candidate_required_location"))
+                    .employmentType(ConnectorParsing.employmentType(ConnectorParsing.text(node, "job_type")))
+                    .workMode("REMOTE") // Remotive lists remote jobs only
+                    .salary(ConnectorParsing.text(node, "salary"))
+                    .rawContent(description)
+                    .postedDate(ConnectorParsing.isoDateTime(ConnectorParsing.text(node, "publication_date")))
                     .discoveredAt(LocalDateTime.now(ZoneOffset.UTC))
                     .normalizedTitle(title.trim())
                     .normalizedCompany(company.trim())
                     .skills(tags)
-                    .metadata(Map.of("externalId", idStr, "category", "software-dev"))
+                    .metadata(Map.of("externalId", id, "category", Objects.toString(ConnectorParsing.text(node, "category"), ""), "tags", tags))
                     .build();
         } catch (Exception e) {
             return null;

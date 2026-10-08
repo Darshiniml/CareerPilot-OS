@@ -15,13 +15,18 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         jdbc:
           time_zone: UTC
-  redis:
-    host: ${REDIS_HOST:localhost}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   flyway:
     enabled: true
     baseline-on-migrate: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
 
 server:
   port: 8080
@@ -30,7 +35,9 @@ server:
 
 security:
   jwt:
-    secret-key: ${JWT_SECRET_KEY:default-very-secure-secret-key-that-is-at-least-256-bits-long-careerpilot-os-2026}
+    # Required. There is deliberately no default here: the dev profile supplies a dev-only value,
+    # every other environment must set JWT_SECRET_KEY (at least 32 bytes).
+    secret-key: ${JWT_SECRET_KEY}
     access-token-expiration-ms: 900000 # 15 mins
     refresh-token-expiration-ms: 604800000 # 7 days
 
@@ -49,6 +56,30 @@ features:
     enable-company-research: ${ENABLE_COMPANY_RESEARCH:true}
 
 careerpilot:
+  ai-service:
+    url: ${CAREERPILOT_AI_SERVICE_URL:http://localhost:8000}
+    # Shared service-to-service token; must equal AI_SERVICE_TOKEN on the AI service.
+    token: ${AI_SERVICE_TOKEN:}
+    # Local CPU models can take minutes for long documents.
+    timeout-ms: ${CAREERPILOT_AI_TIMEOUT_MS:660000} # > AI service LLM timeout, so its explicit error arrives first
+  frontend-url: ${CAREERPILOT_FRONTEND_URL:http://localhost:5173}
+  email:
+    # base64 32-byte key used to encrypt OAuth refresh tokens at rest. Empty = mailbox connections disabled.
+    token-encryption-key: ${EMAIL_TOKEN_ENCRYPTION_KEY:}
+    gmail:
+      client-id: ${GMAIL_OAUTH_CLIENT_ID:}
+      client-secret: ${GMAIL_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GMAIL_OAUTH_REDIRECT_URI:}
+    outlook:
+      client-id: ${OUTLOOK_OAUTH_CLIENT_ID:}
+      client-secret: ${OUTLOOK_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${OUTLOOK_OAUTH_REDIRECT_URI:}
+  cors:
+    allowed-origins: ${CAREERPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost}
+  demo:
+    enabled: ${CAREERPILOT_DEMO_ENABLED:false}
+    email: ${CAREERPILOT_DEMO_EMAIL:demo@careerpilot.local}
+    password: ${CAREERPILOT_DEMO_PASSWORD:}
   ingestion:
     n8n:
       # Machine-to-machine shared secret for the n8n ingestion webhook. Sourced from the
@@ -59,13 +90,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        include: health,info,prometheus
   endpoint:
     health:
-      show-details: always
-  metrics:
-    export:
-      prometheus:
+      show-details: when-authorized
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 springdoc:

@@ -22,7 +22,7 @@ public class ExperienceMatchScorer implements MatchScorer {
         String candidateSeniority = candidate.getSeniorityLevel();
 
         if (jobSeniority == null || jobSeniority.isBlank()) {
-            return 100.0;
+            return NOT_ASSESSABLE;
         }
 
         double seniorityScore = computeSeniorityMatch(candidateSeniority, jobSeniority);

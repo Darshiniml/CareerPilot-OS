@@ -23,8 +23,8 @@ public class IndustryMatchScorer implements MatchScorer {
         List<String> companyIndustries = company.getIndustries();
         String jobIndustry = job.getIndustry();
 
-        if (companyIndustries == null || companyIndustries.isEmpty()) {
-            return 100.0;
+        if (companyIndustries == null || companyIndustries.isEmpty() || jobIndustry == null || jobIndustry.isBlank()) {
+            return NOT_ASSESSABLE;
         }
 
         if (jobIndustry != null && !jobIndustry.isBlank()) {

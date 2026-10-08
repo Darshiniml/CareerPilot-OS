@@ -14,6 +14,7 @@ package com.careerpilot.backend.modules.application.domain;
  *   <li>{@code UNMATCHED_NO_APPLICATION} — the communication is not matched to an application; no application is guessed or fabricated.</li>
  *   <li>{@code NOT_CLASSIFIED} — the communication has not completed M22.3 classification.</li>
  *   <li>{@code NO_ACTIONABLE_CLASSIFICATION} — classification is UNKNOWN; there is no evidence to act on.</li>
+ *   <li>{@code OUT_OF_ORDER_IGNORED} — a later-received communication already changed the state; this older evidence is recorded but cannot override it.</li>
  * </ul>
  */
 public enum TimelineEventOutcome {
@@ -25,5 +26,6 @@ public enum TimelineEventOutcome {
     WITHHELD_LOW_CONFIDENCE,
     UNMATCHED_NO_APPLICATION,
     NOT_CLASSIFIED,
-    NO_ACTIONABLE_CLASSIFICATION
+    NO_ACTIONABLE_CLASSIFICATION,
+    OUT_OF_ORDER_IGNORED
 }

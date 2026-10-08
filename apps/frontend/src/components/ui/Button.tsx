@@ -1,34 +1,97 @@
 import React from 'react';
+import { Link, type LinkProps } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { cn } from '../../lib/format';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'pill' | 'danger';
-  children: React.ReactNode;
-  as?: any;
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
+
+const base =
+  'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors select-none ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ' +
+  'disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap';
+
+const variants: Record<ButtonVariant, string> = {
+  primary: 'bg-primary text-primary-fg hover:bg-primary-hover shadow-sm',
+  secondary: 'bg-surface-2 text-fg hover:bg-surface-3 border border-border',
+  outline: 'bg-transparent text-fg border border-border-strong hover:bg-surface-2',
+  ghost: 'bg-transparent text-fg-muted hover:text-fg hover:bg-surface-2',
+  danger: 'bg-danger-soft text-danger border border-danger/30 hover:bg-danger/15',
+};
+
+const sizes: Record<ButtonSize, string> = {
+  sm: 'h-8 px-3 text-xs',
+  md: 'h-10 px-4 text-sm',
+  lg: 'h-11 px-5 text-sm',
+  icon: 'h-9 w-9 p-0',
+};
+
+export function buttonClasses(variant: ButtonVariant = 'primary', size: ButtonSize = 'md', className?: string) {
+  return cn(base, variants[variant], sizes[size], className);
 }
 
-export const Button: React.FC<ButtonProps> = ({
-  variant = 'primary',
-  children,
-  className = '',
-  as: Component = 'button',
-  ...props
-}) => {
-  const baseStyles = 'px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 select-none focus:outline-none flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95';
-  
-  const variants = {
-    primary: 'bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white shadow-lg shadow-indigo-500/25 border border-indigo-400/30 hover:shadow-indigo-500/40',
-    secondary: 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-white/10 hover:border-white/20 shadow-md',
-    outline: 'bg-transparent text-slate-200 hover:bg-slate-800/60 border border-slate-700 hover:border-slate-500',
-    danger: 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 shadow-lg shadow-rose-500/10',
-    pill: 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-full px-6 py-2.5 shadow-lg shadow-indigo-500/25',
-  };
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
+  icon?: React.ReactNode;
+}
 
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = 'primary', size = 'md', loading = false, icon, className, children, disabled, type = 'button', ...rest },
+  ref,
+) {
   return (
-    <Component
-      className={`${baseStyles} ${variants[variant]} ${className}`}
-      {...props}
+    <button
+      ref={ref}
+      type={type}
+      className={buttonClasses(variant, size, className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
     >
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : icon}
       {children}
-    </Component>
+    </button>
   );
-};
+});
+
+export function ButtonLink({
+  variant = 'primary',
+  size = 'md',
+  className,
+  icon,
+  children,
+  ...rest
+}: LinkProps & { variant?: ButtonVariant; size?: ButtonSize; icon?: React.ReactNode }) {
+  return (
+    <Link className={buttonClasses(variant, size, className)} {...rest}>
+      {icon}
+      {children}
+    </Link>
+  );
+}
+
+/** External link styled as a button; always opens in a new tab safely. */
+export function ExternalButtonLink({
+  href,
+  variant = 'secondary',
+  size = 'md',
+  className,
+  icon,
+  children,
+}: {
+  href: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={buttonClasses(variant, size, className)}>
+      {icon}
+      {children}
+    </a>
+  );
+}

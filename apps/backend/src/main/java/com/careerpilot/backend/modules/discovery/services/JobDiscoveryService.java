@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @Slf4j
@@ -27,6 +28,7 @@ public class JobDiscoveryService {
     private final DuplicateDetector dedupe;
     private final ApplicationEventPublisher events;
     private final JobIntelligencePort intelligence;
+    private final AtomicBoolean syncInProgress = new AtomicBoolean(false);
     private final ObjectMapper json;
     private final DiscoveryMetrics metrics;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
@@ -148,6 +150,24 @@ public class JobDiscoveryService {
     }
 
     public List<SynchronizationResult> discoverAll(DiscoveryContext context) {
+        // Single flight: login refreshes, agents and the scheduler can all ask at once; a second
+        // concurrent full sync would only duplicate connector traffic and DB load.
+        if (!syncInProgress.compareAndSet(false, true)) {
+            log.info("[JOB-DISCOVERY] action=discoverAll_skipped reason=sync_already_running");
+            return List.of();
+        }
+        try {
+            return runAll(context);
+        } finally {
+            syncInProgress.set(false);
+        }
+    }
+
+    public boolean isSyncInProgress() {
+        return syncInProgress.get();
+    }
+
+    private List<SynchronizationResult> runAll(DiscoveryContext context) {
         List<Connector> enabledConnectors = registry.enabled();
         log.info("[JOB-DISCOVERY] action=discoverAll_start enabled_connectors={}", enabledConnectors.size());
 

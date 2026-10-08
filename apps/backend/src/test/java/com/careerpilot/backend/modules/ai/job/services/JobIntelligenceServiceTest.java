@@ -1,5 +1,12 @@
 package com.careerpilot.backend.modules.ai.job.services;
 
+import com.careerpilot.backend.modules.ai.web.SafeWebPageFetcher;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import com.careerpilot.backend.modules.ai.job.domain.JobIntelligenceCache;
 import com.careerpilot.backend.modules.ai.job.repositories.JobIntelligenceCacheRepository;
 import com.careerpilot.backend.modules.ai.gateway.AiGatewayClient;
@@ -25,11 +32,14 @@ import static org.mockito.Mockito.verify;
 
 class JobIntelligenceServiceTest {
 
+    private static final String PAGE_TEXT = "Senior Backend Engineer at Acme Payments. We are hiring an engineer to build payment APIs in Java and Spring Boot on PostgreSQL. Requirements: five years of backend experience, strong testing habits, experience operating services in production, and clear written communication with the team.";
+
     private AiDocumentRepository documentRepository;
     private JobIntelligenceCacheRepository cacheRepository;
     private KnowledgePipelineService pipelineService;
     private AiGatewayClient gatewayClient;
     private ApplicationEventPublisher eventPublisher;
+    private SafeWebPageFetcher webPageFetcher;
 
     private JobIntelligenceService jobIntelligenceService;
     private UUID documentId;
@@ -42,13 +52,15 @@ class JobIntelligenceServiceTest {
         pipelineService = Mockito.mock(KnowledgePipelineService.class);
         gatewayClient = Mockito.mock(AiGatewayClient.class);
         eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        webPageFetcher = Mockito.mock(SafeWebPageFetcher.class);
 
         jobIntelligenceService = new JobIntelligenceService(
                 documentRepository,
                 cacheRepository,
                 pipelineService,
                 gatewayClient,
-                eventPublisher
+                eventPublisher,
+                webPageFetcher
         );
 
         documentId = UUID.randomUUID();
@@ -125,9 +137,11 @@ class JobIntelligenceServiceTest {
                 .documentType("JOB")
                 .title("Duplicate Software Engineer")
                 .checksum("eee99828fe48e6f4586cc8c70fe4f4c70f75e0ead4e32f1706f72ecc7e6b4716")
+                .status("READY")
                 .build();
 
-        Mockito.when(documentRepository.findAll()).thenReturn(Collections.singletonList(duplicateDoc));
+        Mockito.when(documentRepository.findFirstByDocumentTypeAndChecksumAndIdNot(eq("JOB"), any(), eq(documentId)))
+                .thenReturn(Optional.of(duplicateDoc));
         Mockito.when(cacheRepository.findById(any(String.class))).thenReturn(Optional.empty());
 
         AiDocument result = jobIntelligenceService.processJob(documentId, "Requirements: Java skills.", "https://google.com");
@@ -136,6 +150,22 @@ class JobIntelligenceServiceTest {
         assertEquals(duplicateDoc.getId(), result.getId());
         verify(pipelineService, times(0)).processDocument(any());
         verify(eventPublisher, times(0)).publishEvent(any());
+    }
+
+    @Test
+    void processJobRequiresRealContent() {
+        mockDoc.setContent(null);
+        assertThrows(IllegalArgumentException.class, () -> jobIntelligenceService.processJob(documentId, null, null));
+        verifyNoInteractions(gatewayClient);
+    }
+
+    @Test
+    void processJobUrlRejectsPagesWithoutReadableText() {
+        Mockito.when(webPageFetcher.fetch(any())).thenReturn(
+                new SafeWebPageFetcher.FetchedPage("https://spa.example", "App", "Loading..."));
+        assertThrows(IllegalArgumentException.class,
+                () -> jobIntelligenceService.processJobUrl(UUID.randomUUID(), "https://spa.example"));
+        verifyNoInteractions(gatewayClient);
     }
 
     @Test
@@ -154,10 +184,15 @@ class JobIntelligenceServiceTest {
 
         UUID ownerId = UUID.randomUUID();
         Mockito.when(documentRepository.findById(any(UUID.class))).thenReturn(Optional.of(mockDoc));
+        Mockito.when(webPageFetcher.fetch("https://jobs.acme.example/123")).thenReturn(
+                new SafeWebPageFetcher.FetchedPage("https://jobs.acme.example/123", "Senior Backend Engineer", PAGE_TEXT));
 
-        AiDocument result = jobIntelligenceService.processJobUrl(ownerId, "https://google.com/jobs/123");
+        AiDocument result = jobIntelligenceService.processJobUrl(ownerId, "https://jobs.acme.example/123");
 
         assertNotNull(result);
+        // The real fetched page text is what gets parsed (never canned content).
+        verify(gatewayClient, atLeastOnce()).executeTask(argThat(req ->
+                "JOB_PARSE".equals(req.getTaskType()) && PAGE_TEXT.equals(req.getPayload().get("content"))));
         // Verify 1 discovered event + 10 pipeline chain = 11 events
         verify(eventPublisher, times(11)).publishEvent(any(Object.class));
     }

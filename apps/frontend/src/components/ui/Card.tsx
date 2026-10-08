@@ -1,28 +1,41 @@
 import React from 'react';
+import { cn } from '../../lib/format';
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
-  variant?: 'white' | 'gray' | 'glass';
-}
-
-export const Card: React.FC<CardProps> = ({
-  children,
-  variant = 'glass',
-  className = '',
-  ...props
-}) => {
-  const styles = {
-    glass: 'bg-slate-900/60 backdrop-blur-md border border-white/10 text-slate-100 shadow-xl shadow-black/20',
-    white: 'bg-slate-900/80 backdrop-blur-md border border-white/10 text-slate-100 shadow-xl shadow-black/20',
-    gray: 'bg-slate-800/40 backdrop-blur-sm border border-white/5 text-slate-200',
-  };
-  
+export function Card({ className, children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={`rounded-2xl p-6 transition-all duration-200 ${styles[variant]} ${className}`}
-      {...props}
-    >
+    <div className={cn('rounded-xl border border-border bg-surface shadow-card', className)} {...rest}>
       {children}
     </div>
   );
-};
+}
+
+export function CardHeader({
+  title,
+  description,
+  actions,
+  icon,
+  className,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  icon?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn('flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4', className)}>
+      <div className="flex min-w-0 items-start gap-3">
+        {icon && <div className="mt-0.5 text-primary">{icon}</div>}
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-fg">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}
+        </div>
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+export function CardBody({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <div className={cn('px-5 py-4', className)}>{children}</div>;
+}

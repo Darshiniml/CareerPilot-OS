@@ -81,21 +81,6 @@ public class AnalyticsComponentsTest {
     }
 
     @Test
-    public void testLearningPathEngine() {
-        LearningPathRepository pathRepo = mock(LearningPathRepository.class);
-        when(pathRepo.save(any(LearningPath.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        LearningPathEngine engine = new LearningPathEngine(pathRepo);
-        UUID candidateId = UUID.randomUUID();
-
-        LearningPath kubernetesPath = engine.generateLearningPath(candidateId, "Kubernetes", "BEGINNER", "STRONG");
-        assertEquals("Kubernetes", kubernetesPath.getSkill());
-        assertEquals(4, kubernetesPath.getLearningSequence().size());
-        assertEquals("Linux System Administration Basics", kubernetesPath.getLearningSequence().get(0).getStepName());
-        assertEquals("Docker Containers & Packaging", kubernetesPath.getLearningSequence().get(1).getStepName());
-    }
-
-    @Test
     public void testCareerGrowthAnalyzer() {
         CareerProgressAnalyzer analyzer = new CareerProgressAnalyzer();
 
