@@ -1,0 +1,11 @@
+# HTTPS edge for CareerPilot (docker compose --profile tls). Certificates are obtained and renewed
+# automatically for $DOMAIN; its DNS A record must point at this server and ports 80/443 be open.
+{$DOMAIN} {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy frontend:80 {
+		transport http {
+			read_timeout 900s
+		}
+	}
+}

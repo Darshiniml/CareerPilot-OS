@@ -72,7 +72,9 @@ docker compose up --build # open http://localhost
 ```
 
 Ollama runs on the host by default (`host.docker.internal:11434`); use
-`docker compose --profile ollama up --build` to run it in a container instead. Only the web
+`docker compose --profile ollama up --build` to run it in a container instead, and
+`--profile tls` (with `DOMAIN` set) for HTTPS via Caddy. **Cloud VM deployment with Claude:**
+see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (one command: `deployment/vm/deploy.sh`). Only the web
 server (port 80) is published; MinIO console, Prometheus and Grafana are bound to localhost.
 
 ## AI providers
